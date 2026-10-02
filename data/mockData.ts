@@ -531,7 +531,7 @@ export const INITIAL_ACTIVE_TOKENS: QueueToken[] = [
     doctorName: 'Dr. Sarah Jenkins, MD',
     departmentId: 'dept-1-2',
     departmentName: 'Cardiology & Heart Center',
-    status: 'WAITING',
+    status: 'Waiting',
     priority: 'STANDARD',
     patientName: 'Alex Henderson',
     patientPhone: '+1 (555) 892-4112',
@@ -543,6 +543,75 @@ export const INITIAL_ACTIVE_TOKENS: QueueToken[] = [
     notes: 'Mild chest discomfort evaluation',
   },
 ];
+
+export interface HospitalQueueState {
+  facilityId: string;
+  departmentId: string;
+  departmentName: string;
+  currentlyServing: {
+    tokenNumber: string;
+    patientName: string;
+    doctorName: string;
+    roomNumber: string;
+    calledTime: string;
+  };
+  totalWaiting: number;
+  tokensList: Array<{
+    id: string;
+    tokenNumber: string;
+    patientName: string;
+    status: 'Waiting' | 'Current' | 'Visited';
+    issueTime: string;
+    position: number;
+    priority: string;
+  }>;
+}
+
+export const INITIAL_HOSPITAL_QUEUES: Record<string, HospitalQueueState> = {
+  'fac-1': {
+    facilityId: 'fac-1',
+    departmentId: 'dept-1-2',
+    departmentName: 'Cardiology & Heart Center',
+    currentlyServing: {
+      tokenNumber: 'TK-105',
+      patientName: 'Robert Vance',
+      doctorName: 'Dr. Sarah Jenkins, MD',
+      roomNumber: 'Suite 204',
+      calledTime: '11:10 AM',
+    },
+    totalWaiting: 5,
+    tokensList: [
+      { id: 'q-103', tokenNumber: 'TK-103', patientName: 'Elena Gilbert', status: 'Visited', issueTime: '10:15 AM', position: 0, priority: 'STANDARD' },
+      { id: 'q-104', tokenNumber: 'TK-104', patientName: 'Marcus Bell', status: 'Visited', issueTime: '10:30 AM', position: 0, priority: 'STANDARD' },
+      { id: 'q-105', tokenNumber: 'TK-105', patientName: 'Robert Vance', status: 'Current', issueTime: '10:40 AM', position: 0, priority: 'STANDARD' },
+      { id: 'q-106', tokenNumber: 'TK-106', patientName: 'Rachel Green', status: 'Waiting', issueTime: '10:42 AM', position: 1, priority: 'SENIOR_CITIZEN' },
+      { id: 'q-107', tokenNumber: 'TK-107', patientName: 'Daniel Craig', status: 'Waiting', issueTime: '10:44 AM', position: 2, priority: 'STANDARD' },
+      { id: 'q-108', tokenNumber: 'TK-108', patientName: 'Alex Henderson', status: 'Waiting', issueTime: '10:45 AM', position: 3, priority: 'STANDARD' },
+      { id: 'q-109', tokenNumber: 'TK-109', patientName: 'Sophia Loren', status: 'Waiting', issueTime: '10:50 AM', position: 4, priority: 'STANDARD' },
+      { id: 'q-110', tokenNumber: 'TK-110', patientName: 'James Wilson', status: 'Waiting', issueTime: '10:55 AM', position: 5, priority: 'PEDIATRIC' },
+    ],
+  },
+  'fac-2': {
+    facilityId: 'fac-2',
+    departmentId: 'dept-2-1',
+    departmentName: 'Urgent Care & Minor Injuries',
+    currentlyServing: {
+      tokenNumber: 'UC-202',
+      patientName: 'Carlos Rivera',
+      doctorName: 'Dr. David Chen, MD',
+      roomNumber: 'Urgent Bay 1',
+      calledTime: '11:05 AM',
+    },
+    totalWaiting: 3,
+    tokensList: [
+      { id: 'q-201', tokenNumber: 'UC-201', patientName: 'Maria Santos', status: 'Visited', issueTime: '10:20 AM', position: 0, priority: 'STANDARD' },
+      { id: 'q-202', tokenNumber: 'UC-202', patientName: 'Carlos Rivera', status: 'Current', issueTime: '10:35 AM', position: 0, priority: 'STANDARD' },
+      { id: 'q-203', tokenNumber: 'UC-203', patientName: 'Hannah Abbott', status: 'Waiting', issueTime: '10:45 AM', position: 1, priority: 'STANDARD' },
+      { id: 'q-204', tokenNumber: 'UC-204', patientName: 'Arthur Dent', status: 'Waiting', issueTime: '10:52 AM', position: 2, priority: 'SENIOR_CITIZEN' },
+      { id: 'q-205', tokenNumber: 'UC-205', patientName: 'Chloe Price', status: 'Waiting', issueTime: '10:58 AM', position: 3, priority: 'STANDARD' },
+    ],
+  },
+};
 
 export const INITIAL_APPOINTMENTS: Appointment[] = [
   {

@@ -45,12 +45,10 @@ enum AppointmentType {
 }
 
 enum TokenStatus {
-  WAITING
-  CALLED
-  IN_CONSULTATION
-  SERVED
-  SKIPPED
-  CANCELLED
+  Waiting
+  Current
+  Visited
+  Cancelled
 }
 
 enum PriorityLevel {
@@ -80,7 +78,7 @@ model User {
   // Relations
   doctorProfile Doctor?
   appointments  Appointment[]
-  queueTokens   QueueToken[]
+  tokens        Token[]
   
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
@@ -118,7 +116,7 @@ model Facility {
   departments       Department[]
   doctors           Doctor[]
   appointments      Appointment[]
-  queueTokens       QueueToken[]
+  tokens            Token[]
   
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
@@ -142,7 +140,7 @@ model Department {
   // Relations
   doctors      Doctor[]
   appointments Appointment[]
-  queueTokens  QueueToken[]
+  tokens       Token[]
   
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
@@ -180,7 +178,7 @@ model Doctor {
   
   // Relations
   appointments     Appointment[]
-  queueTokens      QueueToken[]
+  tokens           Token[]
   
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
@@ -228,7 +226,7 @@ model Appointment {
   @@index([status])
 }
 
-model QueueToken {
+model Token {
   id               String        @id @default(uuid())
   tokenNumber      String        // e.g. "TK-108", "A-24"
   
@@ -244,7 +242,7 @@ model QueueToken {
   departmentId     String
   department       Department    @relation(fields: [departmentId], references: [id], onDelete: Cascade)
   
-  status           TokenStatus   @default(WAITING)
+  status           TokenStatus   @default(Waiting)
   priority         PriorityLevel @default(STANDARD)
   
   patientName      String

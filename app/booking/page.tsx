@@ -128,7 +128,7 @@ export default function BookingPage() {
         doctorName: currentDoctor?.name,
         departmentId: currentDepartment?.id || 'dept-general',
         departmentName: currentDepartment?.name || 'General OPD',
-        status: 'WAITING',
+        status: 'Waiting',
         priority: priorityLevel,
         patientName,
         patientPhone,

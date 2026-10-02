@@ -75,7 +75,7 @@ export default function MyTokensDrawer() {
             }`}
           >
             <Ticket className="w-4 h-4 text-amber-500" />
-            <span>Active Tokens ({queueTokens.filter(t => t.status !== 'CANCELLED').length})</span>
+            <span>Active Tokens ({queueTokens.filter(t => t.status !== 'Cancelled').length})</span>
           </button>
 
           <button
@@ -138,8 +138,10 @@ export default function MyTokensDrawer() {
                           {token.tokenNumber}
                         </span>
                         <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${
-                          token.status === 'CALLED' ? 'bg-amber-500 text-white animate-pulse' :
-                          token.status === 'WAITING' ? 'bg-teal-100 text-teal-800' : 'bg-slate-200 text-slate-600'
+                          token.status === 'Current' ? 'bg-amber-500 text-white animate-pulse' :
+                          token.status === 'Waiting' ? 'bg-teal-100 text-teal-800' :
+                          token.status === 'Visited' ? 'bg-emerald-100 text-emerald-800' :
+                          'bg-slate-200 text-slate-600'
                         }`}>
                           {token.status}
                         </span>
@@ -170,7 +172,7 @@ export default function MyTokensDrawer() {
                         <span>View Boarding Pass</span>
                       </button>
 
-                      {token.status === 'WAITING' && (
+                      {token.status === 'Waiting' && (
                         <button
                           onClick={() => cancelQueueToken(token.id)}
                           className="text-rose-600 hover:text-rose-800 text-xs font-semibold cursor-pointer"

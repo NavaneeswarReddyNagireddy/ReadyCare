@@ -38,12 +38,13 @@ export default function TokenTicket({ token, onClose }: TokenTicketProps) {
 
   const getStatusColor = (status: string) => {
     switch (status) {
+      case 'Current':
       case 'CALLED':
         return 'bg-amber-500 text-white animate-pulse';
-      case 'IN_CONSULTATION':
-        return 'bg-blue-600 text-white';
+      case 'Visited':
       case 'SERVED':
         return 'bg-emerald-600 text-white';
+      case 'Cancelled':
       case 'CANCELLED':
         return 'bg-slate-400 text-white';
       default:
@@ -73,7 +74,7 @@ export default function TokenTicket({ token, onClose }: TokenTicketProps) {
 
         <div className="flex items-center gap-2">
           <span className={`text-[11px] font-black uppercase px-2.5 py-1 rounded-full ${getStatusColor(token.status)}`}>
-            {token.status === 'CALLED' ? '🔔 NOW CALLING' : token.status}
+            {token.status === 'Current' ? '🔔 NOW CALLING' : token.status}
           </span>
           {onClose && (
             <button
@@ -214,7 +215,7 @@ export default function TokenTicket({ token, onClose }: TokenTicketProps) {
           <span>{savedToWallet ? 'Saved to Wallet' : 'Save to Wallet'}</span>
         </button>
 
-        {token.status === 'WAITING' && (
+        {token.status === 'Waiting' && (
           <button
             onClick={() => cancelQueueToken(token.id)}
             className="py-2 px-3 bg-red-950/80 hover:bg-red-900 text-red-300 text-xs font-semibold rounded-xl transition-colors cursor-pointer"

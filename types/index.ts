@@ -4,7 +4,7 @@ export type AppointmentStatus = 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'COMPLET
 
 export type AppointmentType = 'IN_PERSON' | 'VIDEO_CONSULTATION' | 'FOLLOW_UP' | 'EMERGENCY_TRIAGE';
 
-export type TokenStatus = 'WAITING' | 'CALLED' | 'IN_CONSULTATION' | 'SERVED' | 'SKIPPED' | 'CANCELLED';
+export type TokenStatus = 'Waiting' | 'Current' | 'Visited' | 'Cancelled';
 
 export type UserRole = 'PATIENT' | 'DOCTOR' | 'STAFF' | 'ADMIN';
 
