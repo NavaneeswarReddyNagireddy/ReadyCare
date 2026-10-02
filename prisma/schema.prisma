@@ -1,0 +1,269 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ------------------------------------------------------
+// Enums
+// ------------------------------------------------------
+
+enum UserRole {
+  PATIENT
+  DOCTOR
+  STAFF
+  ADMIN
+}
+
+enum FacilityType {
+  HOSPITAL
+  CLINIC
+  URGENT_CARE
+  DIAGNOSTIC_CENTER
+  SPECIALTY_CENTER
+}
+
+enum AppointmentStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+  NO_SHOW
+}
+
+enum AppointmentType {
+  IN_PERSON
+  VIDEO_CONSULTATION
+  FOLLOW_UP
+  EMERGENCY_TRIAGE
+}
+
+enum TokenStatus {
+  WAITING
+  CALLED
+  IN_CONSULTATION
+  SERVED
+  SKIPPED
+  CANCELLED
+}
+
+enum PriorityLevel {
+  STANDARD
+  SENIOR_CITIZEN
+  PEDIATRIC
+  EMERGENCY_TRIAGE
+}
+
+// ------------------------------------------------------
+// Models
+// ------------------------------------------------------
+
+model User {
+  id            String         @id @default(uuid())
+  email         String         @unique
+  phone         String?
+  fullName      String
+  role          UserRole       @default(PATIENT)
+  avatarUrl     String?
+  dateOfBirth       DateTime?
+  age               Int?
+  occupation        String?
+  bloodGroup        String?
+  isProfileComplete Boolean        @default(false)
+  
+  // Relations
+  doctorProfile Doctor?
+  appointments  Appointment[]
+  queueTokens   QueueToken[]
+  
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([email])
+  @@index([role])
+}
+
+model Facility {
+  id                String         @id @default(uuid())
+  name              String
+  slug              String         @unique
+  type              FacilityType   @default(HOSPITAL)
+  description       String?
+  address           String
+  city              String
+  state             String
+  zipCode           String
+  latitude          Float
+  longitude         Float
+  phone             String
+  emergencyPhone    String?
+  email             String?
+  website           String?
+  
+  // Operational details
+  isOpen24Hours     Boolean        @default(false)
+  hasEmergencyER    Boolean        @default(false)
+  operatingHours    String         // e.g. "Mon-Sat: 08:00 AM - 08:00 PM, Sun: 24/7"
+  rating            Float          @default(4.5)
+  reviewCount       Int            @default(0)
+  currentAvgWaitMin Int            @default(15)
+  
+  // Relations
+  departments       Department[]
+  doctors           Doctor[]
+  appointments      Appointment[]
+  queueTokens       QueueToken[]
+  
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  @@index([city, state])
+  @@index([type])
+  @@index([hasEmergencyER])
+}
+
+model Department {
+  id           String        @id @default(uuid())
+  name         String        // e.g. "Cardiology", "Pediatrics", "Emergency Care"
+  code         String?       // e.g. "CARD", "PED", "ER"
+  description  String?
+  iconName     String?       // e.g. "Heart", "Baby", "Activity"
+  
+  // Facility Relation
+  facilityId   String
+  facility     Facility      @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  
+  // Relations
+  doctors      Doctor[]
+  appointments Appointment[]
+  queueTokens  QueueToken[]
+  
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@unique([facilityId, name])
+  @@index([facilityId])
+}
+
+model Doctor {
+  id              String        @id @default(uuid())
+  userId          String        @unique
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  facilityId      String
+  facility        Facility      @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  
+  departmentId    String
+  department      Department    @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  
+  specialty       String        // e.g. "Interventional Cardiologist"
+  qualification   String        // e.g. "MD, DM (Cardiology), FACC"
+  experienceYears Int           @default(5)
+  bio             String?
+  consultationFee Float         @default(50.00)
+  
+  // Availability
+  isAvailableToday Boolean      @default(true)
+  nextAvailableSlot String?     // e.g. "Today at 03:30 PM"
+  availableDays    String[]     // e.g. ["MON", "TUE", "WED", "THU", "FRI"]
+  shiftStartTime   String       // e.g. "09:00"
+  shiftEndTime     String       // e.g. "17:00"
+  
+  rating           Float        @default(4.8)
+  reviewCount      Int          @default(0)
+  
+  // Relations
+  appointments     Appointment[]
+  queueTokens      QueueToken[]
+  
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@index([facilityId])
+  @@index([departmentId])
+  @@index([isAvailableToday])
+}
+
+model Appointment {
+  id                String            @id @default(uuid())
+  appointmentNumber String            @unique // e.g. "APT-2026-8941"
+  
+  userId            String
+  user              User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  facilityId        String
+  facility          Facility          @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  
+  doctorId          String
+  doctor            Doctor            @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  
+  departmentId      String
+  department        Department        @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  
+  appointmentDate   DateTime
+  timeSlot          String            // e.g. "10:30 AM - 11:00 AM"
+  type              AppointmentType   @default(IN_PERSON)
+  status            AppointmentStatus @default(CONFIRMED)
+  
+  patientName       String
+  patientPhone      String
+  patientAge        Int?
+  reasonForVisit    String
+  symptoms          String?
+  notes             String?
+  
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  @@index([userId])
+  @@index([facilityId])
+  @@index([doctorId])
+  @@index([appointmentDate])
+  @@index([status])
+}
+
+model QueueToken {
+  id               String        @id @default(uuid())
+  tokenNumber      String        // e.g. "TK-108", "A-24"
+  
+  userId           String?
+  user             User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  
+  facilityId       String
+  facility         Facility      @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  
+  doctorId         String?
+  doctor           Doctor?       @relation(fields: [doctorId], references: [id], onDelete: SetNull)
+  
+  departmentId     String
+  department       Department    @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  
+  status           TokenStatus   @default(WAITING)
+  priority         PriorityLevel @default(STANDARD)
+  
+  patientName      String
+  patientPhone     String
+  
+  issueTime        DateTime      @default(now())
+  estimatedCallTime DateTime?
+  calledTime       DateTime?
+  completedTime    DateTime?
+  
+  positionInQueue  Int           @default(1)
+  estimatedWaitMin Int           @default(15)
+  qrCodeRef        String?       // QR payload or reference code
+  notes            String?
+  
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  @@index([facilityId, status])
+  @@index([departmentId, status])
+  @@index([tokenNumber])
+}
