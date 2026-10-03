@@ -6,19 +6,65 @@ export type AppointmentType = 'IN_PERSON' | 'VIDEO_CONSULTATION' | 'FOLLOW_UP' |
 
 export type TokenStatus = 'Waiting' | 'Current' | 'Visited' | 'Cancelled';
 
-export type UserRole = 'PATIENT' | 'DOCTOR' | 'STAFF' | 'ADMIN';
+// Core 3 User Roles
+export type Role = 'HOSPITAL' | 'DOCTOR' | 'PATIENT';
+
+export type UserRole = 'PATIENT' | 'HOSPITAL' | 'HOSPITAL_ADMIN' | 'DOCTOR' | 'STAFF' | 'ADMIN';
+
+// Role Profile: Hospital
+export interface HospitalProfile {
+  id: string;
+  userId: string;
+  hospitalName: string;
+  ownerName: string;
+  email: string;
+  phoneNumber: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+// Role Profile: Doctor
+export interface DoctorProfile {
+  id: string;
+  userId: string;
+  doctorName: string;
+  email: string;
+  workingHospitalName: string;
+  specialization: string; // e.g. "Cardiologist", "Pediatrician", "Neurologist"
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+// Role Profile: Patient
+export interface PatientProfile {
+  id: string;
+  userId: string;
+  name: string;
+  email: string;
+  phoneNumber?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
 
 export interface User {
   id: string;
   email: string;
   fullName: string;
-  role: UserRole;
+  role: Role | UserRole;
   avatarUrl?: string;
   age?: number;
   occupation?: string;
   bloodGroup?: string;
   phone?: string;
+  hospitalId?: string;
+  hospitalName?: string;
   isProfileComplete: boolean;
+  
+  // Specific role profiles
+  hospitalProfile?: HospitalProfile;
+  doctorProfile?: DoctorProfile;
+  patientProfile?: PatientProfile;
+  
   createdAt?: string;
 }
 

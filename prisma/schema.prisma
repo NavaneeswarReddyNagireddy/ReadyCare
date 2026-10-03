@@ -14,8 +14,16 @@ datasource db {
 // Enums
 // ------------------------------------------------------
 
+enum Role {
+  HOSPITAL
+  DOCTOR
+  PATIENT
+}
+
 enum UserRole {
   PATIENT
+  HOSPITAL
+  HOSPITAL_ADMIN
   DOCTOR
   STAFF
   ADMIN
@@ -59,33 +67,100 @@ enum PriorityLevel {
 }
 
 // ------------------------------------------------------
-// Models
+// Core User Model & Role-Specific Profiles
 // ------------------------------------------------------
 
 model User {
-  id            String         @id @default(uuid())
-  email         String         @unique
-  phone         String?
-  fullName      String
-  role          UserRole       @default(PATIENT)
-  avatarUrl     String?
+  id                String            @id @default(uuid())
+  email             String            @unique
+  phone             String?
+  fullName          String
+  role              Role              @default(PATIENT)
+  avatarUrl         String?
   dateOfBirth       DateTime?
   age               Int?
   occupation        String?
   bloodGroup        String?
-  isProfileComplete Boolean        @default(false)
+  isProfileComplete Boolean           @default(false)
   
-  // Relations
-  doctorProfile Doctor?
-  appointments  Appointment[]
-  tokens        Token[]
+  // Hospital Tenant link (for HOSPITAL role users)
+  hospitalId        String?
+  hospital          Facility?         @relation(fields: [hospitalId], references: [id], onDelete: SetNull)
   
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  // Distinct Role Profiles
+  hospitalProfile   HospitalProfile?
+  doctorProfile     DoctorProfile?
+  patientProfile    PatientProfile?
+  
+  // Legacy relations / Extended models
+  doctor            Doctor?
+  appointments      Appointment[]
+  tokens            Token[]
+  
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
 
   @@index([email])
   @@index([role])
+  @@index([hospitalId])
 }
+
+// 1. Role-Specific Profile: Hospital
+model HospitalProfile {
+  id                  String        @id @default(uuid())
+  userId              String        @unique
+  user                User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  hospitalName        String
+  ownerName           String
+  email               String
+  phoneNumber         String
+  
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  @@index([email])
+  @@index([hospitalName])
+}
+
+// 2. Role-Specific Profile: Doctor
+model DoctorProfile {
+  id                  String        @id @default(uuid())
+  userId              String        @unique
+  user                User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  doctorName          String
+  email               String
+  workingHospitalName String
+  specialization      String        // e.g. "Cardiologist", "Pediatrician", "Neurologist"
+  
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  @@index([email])
+  @@index([specialization])
+  @@index([workingHospitalName])
+}
+
+// 3. Role-Specific Profile: Patient
+model PatientProfile {
+  id                  String        @id @default(uuid())
+  userId              String        @unique
+  user                User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  name                String
+  email               String
+  phoneNumber         String?
+  
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  @@index([email])
+}
+
+// ------------------------------------------------------
+// Facilities, Departments, Doctors & Queue Entities
+// ------------------------------------------------------
 
 model Facility {
   id                String         @id @default(uuid())
@@ -117,6 +192,7 @@ model Facility {
   doctors           Doctor[]
   appointments      Appointment[]
   tokens            Token[]
+  staffUsers        User[]
   
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt

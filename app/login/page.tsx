@@ -46,8 +46,12 @@ export default function LoginPage() {
       const loggedUser = await login(email, password);
       if (!loggedUser.isProfileComplete) {
         router.push('/profile-setup');
+      } else if (loggedUser.role === 'DOCTOR') {
+        router.push('/doctor/dashboard');
+      } else if (loggedUser.role === 'HOSPITAL' || loggedUser.role === 'HOSPITAL_ADMIN') {
+        router.push('/hospital/dashboard');
       } else {
-        router.push('/');
+        router.push('/patient/dashboard');
       }
     } catch (err: any) {
       setError(err?.message || 'Failed to log in. Please try again.');
@@ -56,12 +60,16 @@ export default function LoginPage() {
     }
   };
 
-  const handleDemoLogin = (type: 'NEW_USER' | 'EXISTING_COMPLETE_USER') => {
+  const handleDemoLogin = (type: 'PATIENT_USER' | 'DOCTOR_USER' | 'HOSPITAL_USER' | 'NEW_USER') => {
     quickDemoLogin(type);
     if (type === 'NEW_USER') {
       router.push('/profile-setup');
+    } else if (type === 'DOCTOR_USER') {
+      router.push('/doctor/dashboard');
+    } else if (type === 'HOSPITAL_USER') {
+      router.push('/hospital/dashboard');
     } else {
-      router.push('/');
+      router.push('/patient/dashboard');
     }
   };
 
@@ -166,20 +174,29 @@ export default function LoginPage() {
             <div className="grid grid-cols-1 gap-2">
               <button
                 type="button"
-                onClick={() => handleDemoLogin('NEW_USER')}
-                className="w-full py-2 px-3 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                onClick={() => handleDemoLogin('PATIENT_USER')}
+                className="w-full py-2 px-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-200 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
               >
-                <Activity className="w-3.5 h-3.5 text-amber-600" />
-                <span>Demo: Unfinished Profile ➡️ Goes to /profile-setup</span>
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Demo: Patient (Alex Henderson) ➡️ /patient/dashboard</span>
               </button>
 
               <button
                 type="button"
-                onClick={() => handleDemoLogin('EXISTING_COMPLETE_USER')}
+                onClick={() => handleDemoLogin('DOCTOR_USER')}
                 className="w-full py-2 px-3 bg-teal-50 hover:bg-teal-100 text-teal-900 border border-teal-200 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
               >
-                <CheckCircle2 className="w-3.5 h-3.5 text-teal-600" />
-                <span>Demo: Complete Profile (Alex Henderson) ➡️ Goes to Dashboard</span>
+                <Sparkles className="w-3.5 h-3.5 text-teal-600" />
+                <span>Demo: Doctor (Dr. Sarah Jenkins) ➡️ /doctor/dashboard</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleDemoLogin('HOSPITAL_USER')}
+                className="w-full py-2 px-3 bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-200 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <ShieldCheck className="w-3.5 h-3.5 text-purple-600" />
+                <span>Demo: Hospital Staff (Dr. Vance) ➡️ /hospital/dashboard</span>
               </button>
             </div>
           </div>

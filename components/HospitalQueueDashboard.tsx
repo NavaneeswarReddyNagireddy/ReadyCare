@@ -198,10 +198,10 @@ export default function HospitalQueueDashboard({ facility, onClose }: HospitalQu
             )}
           </div>
 
-          {/* TWO PRIMARY METRIC CARDS */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* METRIC CARDS: If PATIENT, show Estimated Average Wait instead of Next Patient button */}
+          <div className={`grid grid-cols-1 ${user?.role === 'HOSPITAL_ADMIN' ? 'md:grid-cols-3' : 'md:grid-cols-3'} gap-4`}>
             
-            {/* Total Waiting Patients (Exact Requirement) */}
+            {/* Total Waiting Patients */}
             <div className="bg-white rounded-2xl p-5 border border-slate-200/90 shadow-xs space-y-1">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Waiting</span>
@@ -227,25 +227,39 @@ export default function HospitalQueueDashboard({ facility, onClose }: HospitalQu
               </p>
             </div>
 
-            {/* Simulation Action: 'Next Patient' (Exact Requirement) */}
-            <div className="bg-gradient-to-br from-slate-900 to-teal-950 text-white rounded-2xl p-5 border border-slate-800 shadow-md flex flex-col justify-between space-y-3">
-              <div>
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-black uppercase text-teal-300 tracking-wider">Doctor / Desk Control</span>
-                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+            {/* If HOSPITAL_ADMIN: Show Next Patient simulation control */}
+            {user?.role === 'HOSPITAL_ADMIN' ? (
+              <div className="bg-gradient-to-br from-slate-900 to-teal-950 text-white rounded-2xl p-5 border border-slate-800 shadow-md flex flex-col justify-between space-y-3">
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black uppercase text-teal-300 tracking-wider">Hospital Admin Control</span>
+                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                  </div>
+                  <h4 className="font-bold text-xs text-slate-200 mt-1">Advance Queue</h4>
                 </div>
-                <h4 className="font-bold text-xs text-slate-200 mt-1">Simulate Queue Flow</h4>
-              </div>
 
-              <button
-                type="button"
-                onClick={handleNextPatientClick}
-                className="w-full py-2.5 px-4 bg-teal-500 hover:bg-teal-400 text-slate-950 font-black text-xs rounded-xl shadow-lg shadow-teal-500/25 flex items-center justify-center gap-2 transition-all hover:scale-102 active:scale-98 cursor-pointer"
-              >
-                <Play className="w-3.5 h-3.5 fill-slate-950" />
-                <span>Next Patient ➔</span>
-              </button>
-            </div>
+                <button
+                  type="button"
+                  onClick={handleNextPatientClick}
+                  className="w-full py-2.5 px-4 bg-teal-500 hover:bg-teal-400 text-slate-950 font-black text-xs rounded-xl shadow-lg shadow-teal-500/25 flex items-center justify-center gap-2 transition-all hover:scale-102 active:scale-98 cursor-pointer"
+                >
+                  <Play className="w-3.5 h-3.5 fill-slate-950" />
+                  <span>Next Patient ➔</span>
+                </button>
+              </div>
+            ) : (
+              /* For PATIENT: Next Patient button is COMPLETELY HIDDEN. Show queue turnaround time */
+              <div className="bg-gradient-to-br from-teal-50 to-blue-50 text-slate-800 rounded-2xl p-5 border border-teal-200/80 shadow-xs space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-teal-800 uppercase tracking-wider">Avg. Consultation</span>
+                  <Clock className="w-4 h-4 text-teal-600" />
+                </div>
+                <p className="text-3xl sm:text-4xl font-black text-slate-900">
+                  ~12 <span className="text-xs font-semibold text-slate-500">Mins / Patient</span>
+                </p>
+                <p className="text-[11px] text-teal-700">Estimated turnaround on schedule</p>
+              </div>
+            )}
 
           </div>
 

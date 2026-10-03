@@ -36,10 +36,37 @@ export default function AuthGuard({ children }: AuthGuardProps) {
       return;
     }
 
-    // 3. If authenticated and profile is complete
+    // 3. If authenticated and profile is complete: Multi-Tenant & 3-Role Redirection
     if (user.isProfileComplete) {
-      if (isAuthPage || isProfileSetupPage) {
-        router.replace('/');
+      let targetDashboard = '/patient/dashboard';
+      if (user.role === 'DOCTOR') {
+        targetDashboard = '/doctor/dashboard';
+      } else if (user.role === 'HOSPITAL' || user.role === 'HOSPITAL_ADMIN') {
+        targetDashboard = '/hospital/dashboard';
+      }
+
+      // Redirect from auth pages, onboarding, or root '/'
+      if (isAuthPage || isProfileSetupPage || pathname === '/') {
+        router.replace(targetDashboard);
+        return;
+      }
+
+      // Restrict cross-tenant URL access
+      if (user.role === 'PATIENT') {
+        if (pathname.startsWith('/hospital') || pathname.startsWith('/doctor')) {
+          router.replace('/patient/dashboard');
+          return;
+        }
+      } else if (user.role === 'DOCTOR') {
+        if (pathname.startsWith('/hospital')) {
+          router.replace('/doctor/dashboard');
+          return;
+        }
+      } else if (user.role === 'HOSPITAL' || user.role === 'HOSPITAL_ADMIN') {
+        if (pathname.startsWith('/doctor')) {
+          router.replace('/hospital/dashboard');
+          return;
+        }
       }
     }
   }, [user, isLoading, pathname, router]);
@@ -53,7 +80,7 @@ export default function AuthGuard({ children }: AuthGuardProps) {
         </div>
         <div className="text-center space-y-1">
           <p className="font-extrabold text-lg tracking-tight">Ready<span className="text-teal-400">Care</span></p>
-          <p className="text-xs text-slate-400">Verifying secure medical session...</p>
+          <p className="text-xs text-slate-400">Verifying secure tenant session...</p>
         </div>
       </div>
     );
