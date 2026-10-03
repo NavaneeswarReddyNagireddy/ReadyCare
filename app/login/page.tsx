@@ -17,7 +17,8 @@ import {
   AlertCircle,
   User,
   Building2,
-  Stethoscope
+  Stethoscope,
+  Loader2
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
@@ -29,14 +30,18 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // Local UI State for Loading and Error Handling
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string>('');
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  // Frontend onSubmit handler: Sends credentials to Backend Authentication API
+  const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
-    if (!email.trim() || !email.includes('@')) {
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail || !trimmedEmail.includes('@')) {
       setError('Please provide a valid email address.');
       return;
     }
@@ -46,34 +51,50 @@ export default function LoginPage() {
     }
 
     try {
-      setIsSubmitting(true);
-      // Queries the database to find existing user by email & verify password. Will not create a new user.
-      const loggedUser = await login(email, password);
-      
-      // Role-Based Redirection
-      if (loggedUser.role === 'DOCTOR') {
-        router.push('/doctor/dashboard');
-      } else if (loggedUser.role === 'HOSPITAL' || loggedUser.role === 'HOSPITAL_ADMIN') {
-        router.push('/hospital/dashboard');
-      } else {
-        router.push('/patient/dashboard');
+      setIsLoading(true);
+
+      // Call Backend Authentication API endpoint
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: trimmedEmail,
+          password: password,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success || !data.user) {
+        setError(data.error || 'Invalid email or password.');
+        setIsLoading(false);
+        return;
       }
+
+      // Establish user session in client context and localStorage
+      await login(trimmedEmail, password);
+
+      // Immediate Next.js router redirection based on role
+      const redirectPath = data.redirectTo || (
+        data.user.role === 'DOCTOR' ? '/doctor/dashboard' :
+        (data.user.role === 'HOSPITAL' || data.user.role === 'HOSPITAL_ADMIN') ? '/hospital/dashboard' :
+        '/patient/dashboard'
+      );
+
+      router.push(redirectPath);
     } catch (err: any) {
-      setError(err?.message || 'Invalid email or password. Please check your credentials.');
+      setError(err?.message || 'Invalid email or password.');
     } finally {
-      setIsSubmitting(false);
+      setIsLoading(false);
     }
   };
 
-  const handleDemoLogin = (type: 'PATIENT_USER' | 'DOCTOR_USER' | 'HOSPITAL_USER' | 'NEW_USER') => {
-    quickDemoLogin(type);
-    if (type === 'DOCTOR_USER') {
-      router.push('/doctor/dashboard');
-    } else if (type === 'HOSPITAL_USER') {
-      router.push('/hospital/dashboard');
-    } else {
-      router.push('/patient/dashboard');
-    }
+  const handleDemoAccountSelect = (demoEmail: string, demoPass: string) => {
+    setEmail(demoEmail);
+    setPassword(demoPass);
+    setError('');
   };
 
   return (
@@ -96,22 +117,23 @@ export default function LoginPage() {
           Sign In to ReadyCare
         </h2>
         <p className="text-xs sm:text-sm text-slate-300">
-          Enter your email and password to access your role-based dashboard.
+          Enter your email and password to securely access your role dashboard.
         </p>
       </div>
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md relative z-10">
         <div className="bg-white/95 backdrop-blur-xl py-8 px-6 sm:px-10 shadow-2xl rounded-3xl border border-white/20 space-y-6">
           
+          {/* Inline Error Message */}
           {error && (
-            <div className="p-3.5 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-2xl flex items-center gap-2.5">
+            <div className="p-3.5 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-2xl flex items-center gap-2.5 animate-shake">
               <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
               <span>{error}</span>
             </div>
           )}
 
           {/* DEDICATED LOGIN FORM: Only Email and Password */}
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={onSubmit} className="space-y-4">
             <div>
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                 Email
@@ -121,10 +143,11 @@ export default function LoginPage() {
                 <input
                   type="email"
                   required
+                  disabled={isLoading}
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="name@example.com"
-                  className="w-full pl-10 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-teal-500 focus:bg-white transition-all"
+                  className="w-full pl-10 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-teal-500 focus:bg-white transition-all disabled:opacity-60"
                 />
               </div>
             </div>
@@ -140,10 +163,11 @@ export default function LoginPage() {
                 <input
                   type={showPassword ? 'text' : 'password'}
                   required
+                  disabled={isLoading}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Enter your password"
-                  className="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-teal-500 focus:bg-white transition-all"
+                  className="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-teal-500 focus:bg-white transition-all disabled:opacity-60"
                 />
                 <button
                   type="button"
@@ -155,13 +179,23 @@ export default function LoginPage() {
               </div>
             </div>
 
+            {/* Submit Button with Loading State & Disabled Behavior */}
             <button
               type="submit"
-              disabled={isSubmitting}
-              className="w-full py-3.5 px-4 bg-teal-600 hover:bg-teal-700 text-white font-extrabold text-sm rounded-xl shadow-lg shadow-teal-600/25 flex items-center justify-center gap-2 transition-all hover:scale-102 active:scale-98 cursor-pointer disabled:opacity-70"
+              disabled={isLoading}
+              className="w-full py-3.5 px-4 bg-teal-600 hover:bg-teal-700 text-white font-extrabold text-sm rounded-xl shadow-lg shadow-teal-600/25 flex items-center justify-center gap-2 transition-all hover:scale-102 active:scale-98 cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed"
             >
-              <span>{isSubmitting ? 'Verifying Account...' : 'Sign In'}</span>
-              <ArrowRight className="w-4 h-4" />
+              {isLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Authenticating...</span>
+                </>
+              ) : (
+                <>
+                  <span>Sign In</span>
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              )}
             </button>
           </form>
 
@@ -169,16 +203,13 @@ export default function LoginPage() {
           <div className="pt-4 border-t border-slate-100 space-y-2">
             <div className="flex items-center gap-2 justify-center text-[11px] font-bold text-slate-400 uppercase tracking-wider">
               <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-              <span>Quick Demo Accounts</span>
+              <span>Quick Demo Credentials</span>
             </div>
 
             <div className="grid grid-cols-1 gap-2">
               <button
                 type="button"
-                onClick={() => {
-                  setEmail('alex.henderson@example.com');
-                  setPassword('password123');
-                }}
+                onClick={() => handleDemoAccountSelect('alex.henderson@example.com', 'password123')}
                 className="w-full py-2 px-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-200 rounded-xl text-xs font-bold flex items-center justify-between transition-colors cursor-pointer"
               >
                 <div className="flex items-center gap-2">
@@ -190,10 +221,7 @@ export default function LoginPage() {
 
               <button
                 type="button"
-                onClick={() => {
-                  setEmail('dr.sarah.jenkins@metrohealth.org');
-                  setPassword('password123');
-                }}
+                onClick={() => handleDemoAccountSelect('dr.sarah.jenkins@metrohealth.org', 'password123')}
                 className="w-full py-2 px-3 bg-teal-50 hover:bg-teal-100 text-teal-900 border border-teal-200 rounded-xl text-xs font-bold flex items-center justify-between transition-colors cursor-pointer"
               >
                 <div className="flex items-center gap-2">
@@ -205,10 +233,7 @@ export default function LoginPage() {
 
               <button
                 type="button"
-                onClick={() => {
-                  setEmail('admin@metrohealth.org');
-                  setPassword('password123');
-                }}
+                onClick={() => handleDemoAccountSelect('admin@metrohealth.org', 'password123')}
                 className="w-full py-2 px-3 bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-200 rounded-xl text-xs font-bold flex items-center justify-between transition-colors cursor-pointer"
               >
                 <div className="flex items-center gap-2">
@@ -220,7 +245,7 @@ export default function LoginPage() {
             </div>
           </div>
 
-          {/* REQUIRED UI NAVIGATION LINK */}
+          {/* Navigation Link to Signup */}
           <div className="text-center pt-2 text-xs text-slate-600">
             New to ReadyCare?{' '}
             <Link href="/signup" className="font-bold text-teal-600 hover:text-teal-700 hover:underline">

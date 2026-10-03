@@ -15,14 +15,32 @@ export async function POST(request: Request) {
 
     const result = await authenticateUserAction(email, password);
 
-    if (!result.success) {
+    if (!result.success || !result.user) {
       return NextResponse.json(
-        { success: false, error: result.error || 'Invalid credentials' },
+        { success: false, error: result.error || 'Invalid email or password' },
         { status: 401 }
       );
     }
 
-    return NextResponse.json(result, { status: 200 });
+    const response = NextResponse.json(result, { status: 200 });
+
+    // Set secure HTTP-only session cookie
+    response.cookies.set({
+      name: 'readycare_session',
+      value: JSON.stringify({
+        userId: result.user.id,
+        role: result.user.role,
+        email: result.user.email,
+        createdAt: new Date().toISOString(),
+      }),
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 60 * 60 * 24 * 7, // 7 days
+      path: '/',
+    });
+
+    return response;
   } catch (error: any) {
     return NextResponse.json(
       { success: false, error: error?.message || 'Authentication error' },
