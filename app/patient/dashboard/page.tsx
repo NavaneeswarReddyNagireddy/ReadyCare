@@ -29,7 +29,8 @@ import {
   Navigation,
   Map as MapIcon,
   Layers,
-  ChevronRight
+  Compass,
+  ArrowUpDown
 } from 'lucide-react';
 import { useHealthcare } from '@/context/HealthcareContext';
 import { useAuth } from '@/context/AuthContext';
@@ -59,9 +60,17 @@ const SPECIALTY_OPTIONS = [
   'Pediatrics',
 ];
 
-// Helper to calculate distance in km
-function calculateDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371; // Earth radius in km
+/**
+ * Calculates real-time distance between two GPS coordinates using the Haversine formula.
+ * Returns distance in kilometers rounded to 1 decimal place.
+ */
+export function calculateDistance(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+): number {
+  const R = 6371; // Earth radius in kilometers
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLon = ((lon2 - lon1) * Math.PI) / 180;
   const a =
@@ -92,30 +101,33 @@ export default function PatientDashboardPage() {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedSpecialty, setSelectedSpecialty] = useState<string>('ALL');
 
-  // Interactive Map & Geolocation State
+  // User Location State: Stores GPS coordinates [latitude, longitude]
   const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
   const [isLocatingUser, setIsLocatingUser] = useState<boolean>(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
   const [selectedHospitalId, setSelectedHospitalId] = useState<string | null>(null);
   const [isMapVisible, setIsMapVisible] = useState<boolean>(true);
 
-  // Request browser geolocation on mount
+  // Request browser geolocation via navigator.geolocation API
   const requestUserLocation = () => {
     if (typeof window !== 'undefined' && 'geolocation' in navigator) {
       setIsLocatingUser(true);
+      setLocationError(null);
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           setUserLocation([pos.coords.latitude, pos.coords.longitude]);
           setIsLocatingUser(false);
+          setLocationError(null);
         },
         (err) => {
-          console.warn('Geolocation permission not granted or timeout, setting default city coordinates:', err);
-          setUserLocation([37.7749, -122.4194]);
+          console.warn('Geolocation denied or timed out:', err);
+          setLocationError('Location access was denied or is unavailable.');
           setIsLocatingUser(false);
         },
-        { timeout: 7000, enableHighAccuracy: true }
+        { timeout: 8000, enableHighAccuracy: true }
       );
     } else {
-      setUserLocation([37.7749, -122.4194]);
+      setLocationError('Geolocation is not supported by your browser.');
     }
   };
 
@@ -174,36 +186,59 @@ export default function PatientDashboardPage() {
     }
   }
 
-  // Filtered dynamically fetched hospitals
+  // Filtered & Smart-Sorted dynamically fetched hospitals:
+  // Nearest facilities appear at top when user location is known; falls back gracefully to alphabetical sorting.
   const filteredHospitals = useMemo(() => {
-    return hospitals.filter((hosp) => {
-      // Search query filter (matches hospital name, location, owner, or specialty)
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        const matchesName = hosp.hospitalName.toLowerCase().includes(q);
-        const matchesLocation = hosp.location.toLowerCase().includes(q);
-        const matchesOwner = hosp.ownerName.toLowerCase().includes(q);
-        const matchesSpecialty = hosp.specialty.toLowerCase().includes(q);
-        if (!matchesName && !matchesLocation && !matchesOwner && !matchesSpecialty) {
-          return false;
+    return hospitals
+      .filter((hosp) => {
+        // Search query filter (matches hospital name, location, owner, or specialty)
+        if (searchQuery.trim()) {
+          const q = searchQuery.toLowerCase();
+          const matchesName = hosp.hospitalName.toLowerCase().includes(q);
+          const matchesLocation = hosp.location.toLowerCase().includes(q);
+          const matchesOwner = hosp.ownerName.toLowerCase().includes(q);
+          const matchesSpecialty = hosp.specialty.toLowerCase().includes(q);
+          if (!matchesName && !matchesLocation && !matchesOwner && !matchesSpecialty) {
+            return false;
+          }
         }
-      }
 
-      // Specialty filter
-      if (selectedSpecialty !== 'ALL') {
-        if (hosp.specialty.toLowerCase() !== selectedSpecialty.toLowerCase()) {
-          return false;
+        // Specialty filter
+        if (selectedSpecialty !== 'ALL') {
+          if (hosp.specialty.toLowerCase() !== selectedSpecialty.toLowerCase()) {
+            return false;
+          }
         }
-      }
 
-      return true;
-    });
-  }, [hospitals, searchQuery, selectedSpecialty]);
+        return true;
+      })
+      .sort((a, b) => {
+        // Smart Nearest-First Sorting if user location is available
+        if (userLocation) {
+          const latA = a.latitude ?? 37.7749;
+          const lonA = a.longitude ?? -122.4194;
+          const distA = calculateDistance(userLocation[0], userLocation[1], latA, lonA);
+
+          const latB = b.latitude ?? 37.7749;
+          const lonB = b.longitude ?? -122.4194;
+          const distB = calculateDistance(userLocation[0], userLocation[1], latB, lonB);
+
+          return distA - distB;
+        }
+
+        // Graceful fallback: Alphabetical sorting by hospital name
+        return a.hospitalName.localeCompare(b.hospitalName);
+      });
+  }, [hospitals, searchQuery, selectedSpecialty, userLocation]);
 
   // Convert HospitalProfile into Facility structure for modal actions
   const getFacilityFromHospital = (hosp: HospitalProfile): Facility => {
     const matched = facilities.find(f => f.name.toLowerCase() === hosp.hospitalName.toLowerCase());
     if (matched) return matched;
+
+    const dist = userLocation && hosp.latitude && hosp.longitude
+      ? calculateDistance(userLocation[0], userLocation[1], hosp.latitude, hosp.longitude)
+      : 3.2;
 
     return {
       id: hosp.id,
@@ -219,9 +254,9 @@ export default function PatientDashboardPage() {
       emergencyPhone: hosp.phoneNumber,
       email: hosp.email,
       website: `https://${hosp.hospitalName.toLowerCase().replace(/[^a-z0-9]+/g, '')}.readycare.org`,
-      distanceKm: 3.2,
-      driveTimeMin: 10,
-      walkTimeMin: 25,
+      distanceKm: dist,
+      driveTimeMin: Math.max(5, Math.round(dist * 3)),
+      walkTimeMin: Math.max(10, Math.round(dist * 12)),
       isOpen24Hours: hosp.specialty === '24/7 Emergency',
       isOpenNow: true,
       hasEmergencyER: hosp.specialty === '24/7 Emergency',
@@ -308,7 +343,7 @@ export default function PatientDashboardPage() {
             Welcome, {user?.fullName || 'Alex Henderson'}
           </h1>
           <p className="text-xs sm:text-sm text-slate-500">
-            Browse registered hospitals in real-time, inspect specialties on the interactive map, and secure walk-in passes.
+            Browse nearby accredited hospitals, calculate live GPS distances, and secure fast walk-in tokens.
           </p>
         </div>
 
@@ -415,7 +450,7 @@ export default function PatientDashboardPage() {
                 Live Interactive Hospital Map
               </h2>
               <p className="text-xs text-slate-500">
-                Click any hospital marker to view specialty details, live distance, and fast walk-in booking.
+                Click any hospital marker to inspect distance, specialty details, and fast walk-in booking.
               </p>
             </div>
           </div>
@@ -447,17 +482,30 @@ export default function PatientDashboardPage() {
         )}
       </section>
 
-      {/* DYNAMIC HOSPITAL DIRECTORY SECTION (Real-Time Database Query) */}
+      {/* DYNAMIC HOSPITAL DIRECTORY SECTION (Real-Time Database Query & Smart Distance Sorting) */}
       <section className="space-y-6">
         
         {/* Section Header with live badge & refresh */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-black bg-emerald-100 text-emerald-800 border border-emerald-200">
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
                 Live Database Query
               </span>
+              
+              {userLocation ? (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-teal-100 text-teal-800 border border-teal-200">
+                  <ArrowUpDown className="w-3 h-3 text-teal-600" />
+                  Sorted by Nearest Distance
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200">
+                  <Compass className="w-3 h-3 text-slate-400" />
+                  Sorted Alphabetically (Location Pending)
+                </span>
+              )}
+
               <span className="text-xs text-slate-400 font-medium">
                 {hospitals.length} Registered Facilities
               </span>
@@ -466,18 +514,31 @@ export default function PatientDashboardPage() {
               Hospital Directory & Walk-in Access
             </h2>
             <p className="text-xs sm:text-sm text-slate-500">
-              Live directory of accredited hospitals fetched dynamically from the database.
+              Live directory with real-time Haversine distance calculations and nearest-facility triage.
             </p>
           </div>
 
-          <button
-            onClick={loadHospitals}
-            disabled={isLoadingHospitals}
-            className="inline-flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 shadow-2xs transition-all cursor-pointer self-start sm:self-auto disabled:opacity-50"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${isLoadingHospitals ? 'animate-spin text-teal-600' : 'text-slate-400'}`} />
-            <span>{isLoadingHospitals ? 'Refreshing...' : 'Refresh Directory'}</span>
-          </button>
+          <div className="flex items-center gap-2">
+            {!userLocation && (
+              <button
+                onClick={requestUserLocation}
+                disabled={isLocatingUser}
+                className="inline-flex items-center gap-1.5 px-3 py-2 bg-teal-50 hover:bg-teal-100 border border-teal-200 rounded-xl text-xs font-bold text-teal-800 shadow-2xs transition-all cursor-pointer disabled:opacity-50"
+              >
+                <Navigation className={`w-3.5 h-3.5 ${isLocatingUser ? 'animate-spin text-teal-600' : 'text-teal-600'}`} />
+                <span>{isLocatingUser ? 'Detecting Location...' : 'Enable Location Sorting'}</span>
+              </button>
+            )}
+
+            <button
+              onClick={loadHospitals}
+              disabled={isLoadingHospitals}
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 shadow-2xs transition-all cursor-pointer disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isLoadingHospitals ? 'animate-spin text-teal-600' : 'text-slate-400'}`} />
+              <span>{isLoadingHospitals ? 'Refreshing...' : 'Refresh'}</span>
+            </button>
+          </div>
         </div>
 
         {/* Search & Specialization Filters Bar */}
@@ -597,9 +658,10 @@ export default function PatientDashboardPage() {
               const facilityObj = getFacilityFromHospital(hosp);
               const isSelected = selectedHospitalId === hosp.id;
 
-              // Compute distance from user if available
-              const distKm = userLocation && hosp.latitude && hosp.longitude 
-                ? calculateDistanceKm(userLocation[0], userLocation[1], hosp.latitude, hosp.longitude)
+              // Calculate real-time Haversine distance if user location & hospital coordinates are present
+              const hasCoordinates = hosp.latitude !== undefined && hosp.latitude !== null && hosp.longitude !== undefined && hosp.longitude !== null;
+              const distKm = userLocation && hasCoordinates
+                ? calculateDistance(userLocation[0], userLocation[1], hosp.latitude!, hosp.longitude!)
                 : null;
 
               return (
@@ -617,7 +679,7 @@ export default function PatientDashboardPage() {
                   {/* Card Header */}
                   <div className="p-6 space-y-4">
                     
-                    {/* Top Badges: Specialization & Live status */}
+                    {/* Top Badges: Specialization & Live distance status */}
                     <div className="flex items-center justify-between gap-2">
                       <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs border font-bold ${badgeInfo.bg}`}>
                         <span className={`w-2 h-2 rounded-full ${badgeInfo.dot}`} />
@@ -626,10 +688,15 @@ export default function PatientDashboardPage() {
                       </span>
 
                       <div className="flex items-center gap-1.5">
-                        {distKm !== null && (
-                          <span className="text-[11px] font-bold text-teal-800 bg-teal-50 border border-teal-200 px-2.5 py-0.5 rounded-md flex items-center gap-1">
+                        {distKm !== null ? (
+                          <span className="text-[11px] font-bold text-teal-800 bg-teal-50 border border-teal-200 px-2.5 py-0.5 rounded-md flex items-center gap-1 shadow-2xs">
                             <Navigation className="w-3 h-3 text-teal-600" />
-                            {distKm} km
+                            {distKm} km away
+                          </span>
+                        ) : (
+                          <span className="text-[11px] font-medium text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md flex items-center gap-1">
+                            <Compass className="w-3 h-3 text-slate-400" />
+                            Distance unknown
                           </span>
                         )}
                         <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-md flex items-center gap-1">
