@@ -2,12 +2,15 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User, UserRole, Role, HospitalProfile, DoctorProfile, PatientProfile } from '@/types';
+import { authenticateUserAction, registerUserRecordAction } from '@/app/actions/auth';
 
 export interface SignupHospitalPayload {
   hospitalName: string;
   ownerName: string;
   email: string;
   phoneNumber: string;
+  location: string;
+  specialty: string;
   password?: string;
 }
 
@@ -111,6 +114,8 @@ export const DEMO_HOSPITAL_USER: User = {
     ownerName: 'Dr. Marcus Vance',
     email: 'admin@metrohealth.org',
     phoneNumber: '+1 (555) 911-0001',
+    location: 'Downtown Medical District, Metro City',
+    specialty: 'Cardiology',
     createdAt: '2026-09-01T10:00:00Z',
   },
   createdAt: '2026-09-01T10:00:00Z',
@@ -158,8 +163,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       ownerName: data.ownerName.trim(),
       email: data.email.trim().toLowerCase(),
       phoneNumber: data.phoneNumber.trim(),
+      location: data.location.trim(),
+      specialty: data.specialty.trim(),
       createdAt: new Date().toISOString(),
     };
+
+    // Also persist hospital profile to database / registered hospitals API
+    try {
+      await fetch('/api/hospitals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          hospitalName: data.hospitalName.trim(),
+          ownerName: data.ownerName.trim(),
+          email: data.email.trim().toLowerCase(),
+          phoneNumber: data.phoneNumber.trim(),
+          location: data.location.trim(),
+          specialty: data.specialty.trim(),
+        }),
+      });
+    } catch (apiErr) {
+      console.warn('API sync warning:', apiErr);
+    }
 
     const newUser: User = {
       id: userId,
@@ -173,6 +198,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       hospitalProfile,
       createdAt: new Date().toISOString(),
     };
+
+    // Persist to database store for future logins
+    try {
+      await registerUserRecordAction({
+        id: userId,
+        email: data.email,
+        password: data.password || 'password123',
+        fullName: data.ownerName,
+        role: 'HOSPITAL',
+        phone: data.phoneNumber,
+        hospitalId: 'fac-1',
+        hospitalName: data.hospitalName,
+        hospitalProfile,
+      });
+    } catch (dbErr) {
+      console.warn('User DB registration warning:', dbErr);
+    }
 
     setUser(newUser);
     localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(newUser));
@@ -209,6 +251,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       createdAt: new Date().toISOString(),
     };
 
+    // Persist to database store for future logins
+    try {
+      await registerUserRecordAction({
+        id: userId,
+        email: data.email,
+        password: data.password || 'password123',
+        fullName: data.doctorName,
+        role: 'DOCTOR',
+        occupation: `${data.specialization} Specialist`,
+        doctorProfile,
+      });
+    } catch (dbErr) {
+      console.warn('User DB registration warning:', dbErr);
+    }
+
     setUser(newUser);
     localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(newUser));
     setIsLoading(false);
@@ -241,6 +298,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       createdAt: new Date().toISOString(),
     };
 
+    // Persist to database store for future logins
+    try {
+      await registerUserRecordAction({
+        id: userId,
+        email: data.email,
+        password: data.password || 'password123',
+        fullName: data.name,
+        role: 'PATIENT',
+        phone: data.phoneNumber,
+        patientProfile,
+      });
+    } catch (dbErr) {
+      console.warn('User DB registration warning:', dbErr);
+    }
+
     setUser(newUser);
     localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(newUser));
     setIsLoading(false);
@@ -261,6 +333,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         ownerName: fullName || email.split('@')[0],
         email,
         phoneNumber: '+1 (555) 000-0000',
+        location: 'Downtown Medical District, Metro City',
+        specialty: 'General Hospital',
         password,
       });
     } else if (role === 'DOCTOR') {
@@ -281,51 +355,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  // Authentication Login: Query DB to find existing user, verify password. Do not create new user.
   const login = async (email: string, password?: string): Promise<User> => {
     setIsLoading(true);
-    await new Promise((res) => setTimeout(res, 400));
-
-    let loggedUser: User;
-    const lowerEmail = email.toLowerCase();
-
-    if (lowerEmail.includes('doc') || lowerEmail.includes('jenkins') || lowerEmail.includes('doctor')) {
-      loggedUser = DEMO_DOCTOR_USER;
-    } else if (lowerEmail.includes('hospital') || lowerEmail.includes('admin') || lowerEmail.includes('metrohealth')) {
-      loggedUser = DEMO_HOSPITAL_USER;
-    } else if (lowerEmail.includes('alex') || lowerEmail.includes('patient') || lowerEmail.includes('demo')) {
-      loggedUser = DEMO_PATIENT_USER;
-    } else {
-      const existing = localStorage.getItem(AUTH_STORAGE_KEY);
-      if (existing) {
-        const parsed = JSON.parse(existing);
-        if (parsed.email === lowerEmail) {
-          loggedUser = parsed;
-        } else {
-          loggedUser = {
-            id: `usr-${Date.now()}`,
-            email: lowerEmail,
-            fullName: email.split('@')[0],
-            role: 'PATIENT',
-            isProfileComplete: false,
-            createdAt: new Date().toISOString(),
-          };
-        }
-      } else {
-        loggedUser = {
-          id: `usr-${Date.now()}`,
-          email: lowerEmail,
-          fullName: email.split('@')[0],
-          role: 'PATIENT',
-          isProfileComplete: false,
-          createdAt: new Date().toISOString(),
-        };
+    try {
+      const authResult = await authenticateUserAction(email, password);
+      
+      if (!authResult.success || !authResult.user) {
+        throw new Error(authResult.error || 'Authentication failed. Please check your credentials.');
       }
-    }
 
-    setUser(loggedUser);
-    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(loggedUser));
-    setIsLoading(false);
-    return loggedUser;
+      setUser(authResult.user);
+      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(authResult.user));
+      return authResult.user;
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const updateProfile = async (data: {

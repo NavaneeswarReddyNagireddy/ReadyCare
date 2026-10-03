@@ -19,7 +19,8 @@ import {
   Activity, 
   CheckCircle2, 
   AlertCircle,
-  Briefcase
+  Briefcase,
+  MapPin
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { Role } from '@/types';
@@ -47,6 +48,8 @@ export default function SignupPage() {
   const [ownerName, setOwnerName] = useState('');
   const [hospitalEmail, setHospitalEmail] = useState('');
   const [hospitalPhone, setHospitalPhone] = useState('');
+  const [hospitalLocation, setHospitalLocation] = useState('');
+  const [hospitalSpecialty, setHospitalSpecialty] = useState('General Hospital');
 
   // Doctor Specific Fields
   const [doctorName, setDoctorName] = useState('');
@@ -72,8 +75,8 @@ export default function SignupPage() {
       setIsSubmitting(true);
 
       if (selectedRole === 'HOSPITAL') {
-        if (!hospitalName.trim() || !ownerName.trim() || !hospitalEmail.trim() || !hospitalPhone.trim()) {
-          setError('Please fill in all hospital profile fields.');
+        if (!hospitalName.trim() || !ownerName.trim() || !hospitalEmail.trim() || !hospitalPhone.trim() || !hospitalLocation.trim() || !hospitalSpecialty.trim()) {
+          setError('Please fill in all hospital profile fields including location and primary specialization.');
           setIsSubmitting(false);
           return;
         }
@@ -82,6 +85,8 @@ export default function SignupPage() {
           ownerName,
           email: hospitalEmail,
           phoneNumber: hospitalPhone,
+          location: hospitalLocation,
+          specialty: hospitalSpecialty,
           password,
         });
         router.push('/hospital/dashboard');
@@ -391,6 +396,44 @@ export default function SignupPage() {
                     </div>
                   </div>
                 </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                      Hospital Location (City/Address)
+                    </label>
+                    <div className="relative">
+                      <MapPin className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <input
+                        type="text"
+                        required
+                        value={hospitalLocation}
+                        onChange={(e) => setHospitalLocation(e.target.value)}
+                        placeholder="e.g. Downtown Medical District, Metro City"
+                        className="w-full pl-10 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-purple-500 focus:bg-white transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                      Primary Specialization
+                    </label>
+                    <div className="relative">
+                      <select
+                        value={hospitalSpecialty}
+                        onChange={(e) => setHospitalSpecialty(e.target.value)}
+                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-purple-500 focus:bg-white transition-all cursor-pointer"
+                      >
+                        <option value="General Hospital">General Hospital</option>
+                        <option value="24/7 Emergency">24/7 Emergency</option>
+                        <option value="Cardiology">Cardiology</option>
+                        <option value="Orthopedics">Orthopedics</option>
+                        <option value="Pediatrics">Pediatrics</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
               </>
             )}
 
@@ -622,9 +665,9 @@ export default function SignupPage() {
           </div>
 
           <div className="text-center pt-2 text-xs text-slate-600">
-            Already registered?{' '}
+            Already have an account?{' '}
             <Link href="/login" className="font-bold text-teal-600 hover:text-teal-700 hover:underline">
-              Log in to your account
+              Sign in here
             </Link>
           </div>
 

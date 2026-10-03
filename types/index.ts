@@ -19,6 +19,8 @@ export interface HospitalProfile {
   ownerName: string;
   email: string;
   phoneNumber: string;
+  location: string;    // Hospital Location (City/Address)
+  specialty: string;   // Primary Specialization (General Hospital, 24/7 Emergency, Cardiology, Orthopedics, Pediatrics)
   createdAt?: string;
   updatedAt?: string;
 }

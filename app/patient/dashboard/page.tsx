@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { 
   Search, 
@@ -20,39 +20,84 @@ import {
   Stethoscope, 
   QrCode,
   User,
-  AlertCircle
+  AlertCircle,
+  RefreshCw,
+  Mail,
+  Phone,
+  Filter
 } from 'lucide-react';
 import { useHealthcare } from '@/context/HealthcareContext';
 import { useAuth } from '@/context/AuthContext';
-import { SearchFilters, Facility } from '@/types';
+import { HospitalProfile, Facility } from '@/types';
+import { getRegisteredHospitalProfiles } from '@/app/actions/hospital';
 import EmergencyBanner from '@/components/EmergencyBanner';
-import SearchFilterBar from '@/components/SearchFilterBar';
-import FacilityCard from '@/components/FacilityCard';
+
+const SPECIALTY_OPTIONS = [
+  'ALL',
+  'General Hospital',
+  '24/7 Emergency',
+  'Cardiology',
+  'Orthopedics',
+  'Pediatrics',
+];
 
 export default function PatientDashboardPage() {
   const { 
     facilities, 
     queueTokens, 
-    activeToken, 
     openBookingModal, 
     openTokenDrawer,
-    hospitalQueues
+    hospitalQueues,
+    openHospitalQueueModal
   } = useHealthcare();
   const { user } = useAuth();
 
-  const [filters, setFilters] = useState<SearchFilters>({
-    query: '',
-    specialty: '',
-    facilityType: '',
-    maxDistanceKm: 15,
-    onlyOpenNow: false,
-    onlyEmergencyER: false,
-    sortBy: 'distance',
-  });
+  // Dynamic state for registered HospitalProfile records fetched from database
+  const [hospitals, setHospitals] = useState<HospitalProfile[]>([]);
+  const [isLoadingHospitals, setIsLoadingHospitals] = useState<boolean>(true);
+  const [fetchError, setFetchError] = useState<string>('');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [selectedSpecialty, setSelectedSpecialty] = useState<string>('ALL');
 
-  // Calculate user's active token position in its specific hospital
+  // Fetch live registered hospital records from DB / Server Action
+  const loadHospitals = async () => {
+    try {
+      setIsLoadingHospitals(true);
+      setFetchError('');
+      
+      // Try Next.js dynamic API endpoint first
+      const res = await fetch('/api/hospitals', { cache: 'no-store' });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && Array.isArray(json.data)) {
+          setHospitals(json.data);
+          setIsLoadingHospitals(false);
+          return;
+        }
+      }
+
+      // Direct Server Action fallback
+      const directRecords = await getRegisteredHospitalProfiles();
+      setHospitals(directRecords);
+    } catch (err: any) {
+      console.warn('Error fetching hospital profiles, falling back to server action:', err);
+      try {
+        const directRecords = await getRegisteredHospitalProfiles();
+        setHospitals(directRecords);
+      } catch (fallbackErr: any) {
+        setFetchError('Unable to load live hospital records. Please retry.');
+      }
+    } finally {
+      setIsLoadingHospitals(false);
+    }
+  };
+
+  useEffect(() => {
+    loadHospitals();
+  }, []);
+
+  // Active user token calculations
   const activeUserToken = queueTokens.find(t => t.status === 'Waiting' || t.status === 'Current') || null;
-  const tokenFacility = activeUserToken ? facilities.find(f => f.id === activeUserToken.facilityId) : null;
   const hospitalQueue = activeUserToken ? hospitalQueues[activeUserToken.facilityId] : null;
   
   let userWaitingAheadCount = activeUserToken?.positionInQueue || 0;
@@ -65,54 +110,113 @@ export default function PatientDashboardPage() {
     }
   }
 
-  // Filter and sort facilities across multiple hospitals
-  const filteredFacilities = useMemo(() => {
-    return facilities
-      .filter((facility) => {
-        if (filters.query.trim()) {
-          const q = filters.query.toLowerCase();
-          const matchName = facility.name.toLowerCase().includes(q);
-          const matchCity = facility.city.toLowerCase().includes(q) || facility.address.toLowerCase().includes(q);
-          const matchDept = facility.departments.some(d => d.name.toLowerCase().includes(q));
-          const matchDoc = facility.doctors.some(d => d.name.toLowerCase().includes(q) || d.specialty.toLowerCase().includes(q));
-          const matchSpec = facility.featuredSpecialties.some(s => s.toLowerCase().includes(q));
-          if (!matchName && !matchCity && !matchDept && !matchDoc && !matchSpec) {
-            return false;
-          }
-        }
-
-        if (filters.specialty) {
-          const hasSpec = facility.featuredSpecialties.some(s => s.toLowerCase() === filters.specialty.toLowerCase()) ||
-            facility.departments.some(d => d.name.toLowerCase().includes(filters.specialty.toLowerCase())) ||
-            facility.doctors.some(doc => doc.specialty.toLowerCase().includes(filters.specialty.toLowerCase()));
-          if (!hasSpec) return false;
-        }
-
-        if (filters.facilityType && facility.type !== filters.facilityType) {
+  // Filtered dynamically fetched hospitals
+  const filteredHospitals = useMemo(() => {
+    return hospitals.filter((hosp) => {
+      // Search query filter (matches hospital name or location)
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const matchesName = hosp.hospitalName.toLowerCase().includes(q);
+        const matchesLocation = hosp.location.toLowerCase().includes(q);
+        const matchesOwner = hosp.ownerName.toLowerCase().includes(q);
+        const matchesSpecialty = hosp.specialty.toLowerCase().includes(q);
+        if (!matchesName && !matchesLocation && !matchesOwner && !matchesSpecialty) {
           return false;
         }
+      }
 
-        if (facility.distanceKm > filters.maxDistanceKm) {
+      // Specialty filter
+      if (selectedSpecialty !== 'ALL') {
+        if (hosp.specialty.toLowerCase() !== selectedSpecialty.toLowerCase()) {
           return false;
         }
+      }
 
-        if (filters.onlyOpenNow && !facility.isOpenNow) {
-          return false;
+      return true;
+    });
+  }, [hospitals, searchQuery, selectedSpecialty]);
+
+  // Convert HospitalProfile into Facility structure for modal actions
+  const getFacilityFromHospital = (hosp: HospitalProfile): Facility => {
+    const matched = facilities.find(f => f.name.toLowerCase() === hosp.hospitalName.toLowerCase());
+    if (matched) return matched;
+
+    return {
+      id: hosp.id,
+      name: hosp.hospitalName,
+      slug: hosp.hospitalName.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+      type: 'HOSPITAL',
+      description: `Accredited medical facility specializing in ${hosp.specialty}. Supervised by ${hosp.ownerName}.`,
+      address: hosp.location,
+      city: hosp.location.split(',')[0] || hosp.location,
+      state: 'Metro',
+      zipCode: '90001',
+      phone: hosp.phoneNumber,
+      emergencyPhone: hosp.phoneNumber,
+      email: hosp.email,
+      website: `https://${hosp.hospitalName.toLowerCase().replace(/[^a-z0-9]+/g, '')}.readycare.org`,
+      distanceKm: 3.2,
+      driveTimeMin: 10,
+      walkTimeMin: 25,
+      isOpen24Hours: hosp.specialty === '24/7 Emergency',
+      isOpenNow: true,
+      hasEmergencyER: hosp.specialty === '24/7 Emergency',
+      operatingHours: 'Mon-Sun: 24/7 Emergency & Walk-in Triage',
+      rating: 4.8,
+      reviewCount: 38,
+      currentAvgWaitMin: 15,
+      activeQueueCount: 4,
+      imageUrl: 'https://images.unsplash.com/photo-1587351021759-3e566b6af7cc?auto=format&fit=crop&w=600&q=80',
+      departments: [
+        {
+          id: `dept-${hosp.id}`,
+          name: hosp.specialty,
+          code: 'SPEC',
+          description: `Primary department for ${hosp.specialty}`,
+          iconName: 'Activity',
+          doctorCount: 4,
+          currentWaitMin: 15
         }
+      ],
+      doctors: [],
+      featuredSpecialties: [hosp.specialty, 'Emergency Triage', 'Outpatient Care'],
+    };
+  };
 
-        if (filters.onlyEmergencyER && !facility.hasEmergencyER) {
-          return false;
-        }
-
-        return true;
-      })
-      .sort((a, b) => {
-        if (filters.sortBy === 'distance') return a.distanceKm - b.distanceKm;
-        if (filters.sortBy === 'wait_time') return a.currentAvgWaitMin - b.currentAvgWaitMin;
-        if (filters.sortBy === 'rating') return b.rating - a.rating;
-        return 0;
-      });
-  }, [facilities, filters]);
+  const getSpecialtyBadgeInfo = (specialty: string) => {
+    switch (specialty) {
+      case 'Cardiology':
+        return {
+          bg: 'bg-rose-100 text-rose-800 border-rose-200',
+          dot: 'bg-rose-500',
+          icon: HeartPulse,
+        };
+      case '24/7 Emergency':
+        return {
+          bg: 'bg-amber-100 text-amber-900 border-amber-300 font-extrabold',
+          dot: 'bg-amber-500 animate-pulse',
+          icon: AlertCircle,
+        };
+      case 'Orthopedics':
+        return {
+          bg: 'bg-blue-100 text-blue-800 border-blue-200',
+          dot: 'bg-blue-500',
+          icon: Activity,
+        };
+      case 'Pediatrics':
+        return {
+          bg: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+          dot: 'bg-emerald-500',
+          icon: Users,
+        };
+      default:
+        return {
+          bg: 'bg-purple-100 text-purple-800 border-purple-200',
+          dot: 'bg-purple-500',
+          icon: Building2,
+        };
+    }
+  };
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10 space-y-8">
@@ -125,13 +229,13 @@ export default function PatientDashboardPage() {
               <User className="w-3.5 h-3.5" />
               Patient Portal
             </span>
-            <span className="text-xs text-slate-400">Multi-Hospital Access</span>
+            <span className="text-xs text-slate-400">Live Hospital Discovery</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mt-1">
             Welcome, {user?.fullName || 'Alex Henderson'}
           </h1>
           <p className="text-xs sm:text-sm text-slate-500">
-            Browse nearby accredited medical centers, secure walk-in tickets, and monitor your live place in line.
+            Browse registered hospitals in real-time, inspect specialties, and secure your place in queue.
           </p>
         </div>
 
@@ -154,7 +258,7 @@ export default function PatientDashboardPage() {
         </div>
       </div>
 
-      {/* ACTIVE USER QUEUE SPOTLIGHT (Strict Patient View: Place in line only) */}
+      {/* ACTIVE USER QUEUE SPOTLIGHT (Place in line only) */}
       <section>
         {activeUserToken ? (
           <div className={`rounded-3xl p-6 sm:p-7 text-white shadow-xl border relative overflow-hidden ${
@@ -211,7 +315,7 @@ export default function PatientDashboardPage() {
             <div className="space-y-1 text-center md:text-left">
               <span className="text-[10px] font-extrabold uppercase tracking-wider text-teal-400">ReadyCare Instant Triage</span>
               <h3 className="text-lg sm:text-xl font-bold">You don't have an active queue token yet</h3>
-              <p className="text-xs text-slate-400">Select any hospital below to secure a live walk-in pass or schedule an appointment.</p>
+              <p className="text-xs text-slate-400">Select any live registered hospital below to secure a walk-in pass or schedule an appointment.</p>
             </div>
             <button
               onClick={() => openBookingModal({ mode: 'TOKEN' })}
@@ -226,61 +330,247 @@ export default function PatientDashboardPage() {
       {/* EMERGENCY TRIAGE BANNER */}
       <EmergencyBanner />
 
-      {/* MULTI-HOSPITAL SEARCH & DISCOVERY */}
-      <section className="space-y-4">
-        <div className="flex items-center justify-between">
+      {/* DYNAMIC HOSPITAL DISCOVERY SECTION (Real-Time Database Query) */}
+      <section className="space-y-6">
+        
+        {/* Section Header with live badge & refresh */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-              Explore Nearby Hospitals & Medical Centers
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-black bg-emerald-100 text-emerald-800 border border-emerald-200">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                Live Database Query
+              </span>
+              <span className="text-xs text-slate-400 font-medium">
+                {hospitals.length} Registered Facilities
+              </span>
+            </div>
+            <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight mt-1">
+              Registered Hospitals & Specializations
             </h2>
             <p className="text-xs sm:text-sm text-slate-500">
-              Compare distance, live wait times, and book visits across {facilities.length} accredited facilities.
+              Live directory of accredited hospitals fetched dynamically from the database.
             </p>
+          </div>
+
+          <button
+            onClick={loadHospitals}
+            disabled={isLoadingHospitals}
+            className="inline-flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 shadow-2xs transition-all cursor-pointer self-start sm:self-auto disabled:opacity-50"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isLoadingHospitals ? 'animate-spin text-teal-600' : 'text-slate-400'}`} />
+            <span>{isLoadingHospitals ? 'Refreshing...' : 'Refresh Directory'}</span>
+          </button>
+        </div>
+
+        {/* Search & Specialization Filters Bar */}
+        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs space-y-3">
+          <div className="flex flex-col md:flex-row gap-3">
+            
+            {/* Search Input */}
+            <div className="relative flex-1">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search hospital name, city, location, or administrator..."
+                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-teal-500 focus:bg-white transition-all"
+              />
+            </div>
+
+            {/* Specialization Select Dropdown */}
+            <div className="w-full md:w-64">
+              <div className="relative">
+                <Filter className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                <select
+                  value={selectedSpecialty}
+                  onChange={(e) => setSelectedSpecialty(e.target.value)}
+                  className="w-full pl-10 pr-8 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-900 font-semibold focus:outline-hidden focus:ring-2 focus:ring-teal-500 focus:bg-white transition-all cursor-pointer"
+                >
+                  <option value="ALL">All Specializations</option>
+                  <option value="General Hospital">General Hospital</option>
+                  <option value="24/7 Emergency">24/7 Emergency</option>
+                  <option value="Cardiology">Cardiology</option>
+                  <option value="Orthopedics">Orthopedics</option>
+                  <option value="Pediatrics">Pediatrics</option>
+                </select>
+              </div>
+            </div>
+
+          </div>
+
+          {/* Quick Specialty Filter Chips */}
+          <div className="flex items-center gap-1.5 flex-wrap pt-1 border-t border-slate-100">
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1">
+              Quick Filter:
+            </span>
+            {SPECIALTY_OPTIONS.map((spec) => (
+              <button
+                key={spec}
+                onClick={() => setSelectedSpecialty(spec)}
+                className={`text-xs px-3 py-1 rounded-lg font-bold transition-all cursor-pointer ${
+                  selectedSpecialty === spec
+                    ? 'bg-teal-600 text-white shadow-xs'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                }`}
+              >
+                {spec === 'ALL' ? 'Show All' : spec}
+              </button>
+            ))}
           </div>
         </div>
 
-        <SearchFilterBar
-          filters={filters}
-          onFilterChange={setFilters}
-          resultCount={filteredFacilities.length}
-        />
-      </section>
+        {/* ERROR STATE */}
+        {fetchError && (
+          <div className="p-4 bg-rose-50 border border-rose-200 text-rose-700 rounded-2xl flex items-center justify-between text-xs">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
+              <span>{fetchError}</span>
+            </div>
+            <button
+              onClick={loadHospitals}
+              className="font-bold underline hover:text-rose-900 cursor-pointer"
+            >
+              Retry
+            </button>
+          </div>
+        )}
 
-      {/* HOSPITAL CARDS GRID */}
-      <section>
-        {filteredFacilities.length === 0 ? (
+        {/* LOADING STATE */}
+        {isLoadingHospitals ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {[1, 2, 3].map((n) => (
+              <div key={n} className="bg-white rounded-3xl border border-slate-200 p-6 space-y-4 animate-pulse">
+                <div className="h-6 bg-slate-200 rounded-md w-3/4" />
+                <div className="h-4 bg-slate-100 rounded-md w-1/2" />
+                <div className="h-16 bg-slate-50 rounded-xl" />
+                <div className="h-10 bg-slate-200 rounded-xl" />
+              </div>
+            ))}
+          </div>
+        ) : filteredHospitals.length === 0 ? (
+          /* EMPTY STATE */
           <div className="bg-white rounded-3xl border border-slate-200 p-12 text-center space-y-4 shadow-xs">
             <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto text-slate-400">
               <Building2 className="w-7 h-7" />
             </div>
             <div className="space-y-1">
-              <h3 className="text-lg font-bold text-slate-900">No matching facilities found</h3>
+              <h3 className="text-lg font-bold text-slate-900">No registered hospitals match your filter</h3>
               <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                Try widening your distance radius or clearing your specialty filters.
+                Try resetting your search query or choosing "Show All" specializations.
               </p>
             </div>
             <button
-              onClick={() => setFilters({
-                query: '',
-                specialty: '',
-                facilityType: '',
-                maxDistanceKm: 15,
-                onlyOpenNow: false,
-                onlyEmergencyER: false,
-                sortBy: 'distance',
-              })}
+              onClick={() => {
+                setSearchQuery('');
+                setSelectedSpecialty('ALL');
+              }}
               className="py-2 px-5 bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs rounded-xl transition-colors cursor-pointer"
             >
               Reset Filters
             </button>
           </div>
         ) : (
+          /* DYNAMIC HOSPITAL CARDS GRID */
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredFacilities.map((facility) => (
-              <FacilityCard key={facility.id} facility={facility} />
-            ))}
+            {filteredHospitals.map((hosp) => {
+              const badgeInfo = getSpecialtyBadgeInfo(hosp.specialty);
+              const BadgeIcon = badgeInfo.icon;
+              const facilityObj = getFacilityFromHospital(hosp);
+
+              return (
+                <div 
+                  key={hosp.id}
+                  className="bg-white rounded-3xl border border-slate-200/90 hover:border-teal-300 shadow-xs hover:shadow-xl transition-all duration-300 overflow-hidden flex flex-col justify-between group"
+                >
+                  
+                  {/* Card Header */}
+                  <div className="p-6 space-y-4">
+                    
+                    {/* Top Badges: Specialization & Live status */}
+                    <div className="flex items-center justify-between gap-2">
+                      <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs border font-bold ${badgeInfo.bg}`}>
+                        <span className={`w-2 h-2 rounded-full ${badgeInfo.dot}`} />
+                        <BadgeIcon className="w-3.5 h-3.5" />
+                        <span>{hosp.specialty}</span>
+                      </span>
+
+                      <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-md flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                        Verified
+                      </span>
+                    </div>
+
+                    {/* Hospital Name */}
+                    <div>
+                      <h3 className="text-lg font-black text-slate-900 group-hover:text-teal-700 transition-colors line-clamp-1">
+                        {hosp.hospitalName}
+                      </h3>
+                      
+                      {/* Location (City / Address) */}
+                      <p className="text-xs text-slate-600 font-medium flex items-start gap-1.5 mt-1.5">
+                        <MapPin className="w-4 h-4 text-teal-600 shrink-0 mt-0.5" />
+                        <span className="line-clamp-2">{hosp.location}</span>
+                      </p>
+                    </div>
+
+                    {/* Facility Details Box */}
+                    <div className="bg-slate-50/90 rounded-2xl p-3.5 border border-slate-100 space-y-2 text-xs">
+                      
+                      {/* Administrator / Owner */}
+                      <div className="flex items-center justify-between text-slate-600">
+                        <span className="text-slate-400 font-medium flex items-center gap-1">
+                          <User className="w-3.5 h-3.5" /> Chief Admin:
+                        </span>
+                        <span className="font-bold text-slate-800">{hosp.ownerName}</span>
+                      </div>
+
+                      {/* Phone Contact */}
+                      <div className="flex items-center justify-between text-slate-600">
+                        <span className="text-slate-400 font-medium flex items-center gap-1">
+                          <Phone className="w-3.5 h-3.5" /> Contact:
+                        </span>
+                        <span className="font-semibold text-slate-700 font-mono text-[11px]">{hosp.phoneNumber}</span>
+                      </div>
+
+                      {/* Email */}
+                      <div className="flex items-center justify-between text-slate-600">
+                        <span className="text-slate-400 font-medium flex items-center gap-1">
+                          <Mail className="w-3.5 h-3.5" /> Official Email:
+                        </span>
+                        <span className="font-semibold text-teal-700 truncate max-w-[150px] text-[11px]">{hosp.email}</span>
+                      </div>
+
+                    </div>
+
+                  </div>
+
+                  {/* Card Action Buttons Footer */}
+                  <div className="p-5 pt-0 mt-auto border-t border-slate-100 flex items-center gap-2">
+                    <button
+                      onClick={() => openHospitalQueueModal(facilityObj)}
+                      className="flex-1 py-2.5 px-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-all cursor-pointer"
+                    >
+                      <Activity className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Live Queue</span>
+                    </button>
+
+                    <button
+                      onClick={() => openBookingModal({ facility: facilityObj, mode: 'TOKEN' })}
+                      className="flex-1 py-2.5 px-3 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-all cursor-pointer"
+                    >
+                      <Ticket className="w-3.5 h-3.5 text-amber-300" />
+                      <span>Walk-in Token</span>
+                    </button>
+                  </div>
+
+                </div>
+              );
+            })}
           </div>
         )}
+
       </section>
 
     </div>

@@ -115,12 +115,16 @@ model HospitalProfile {
   ownerName           String
   email               String
   phoneNumber         String
+  location            String        // Hospital Location (City/Address)
+  specialty           String        // Primary Specialization (General Hospital, 24/7 Emergency, Cardiology, Orthopedics, Pediatrics)
   
   createdAt           DateTime      @default(now())
   updatedAt           DateTime      @updatedAt
 
   @@index([email])
   @@index([hospitalName])
+  @@index([location])
+  @@index([specialty])
 }
 
 // 2. Role-Specific Profile: Doctor
