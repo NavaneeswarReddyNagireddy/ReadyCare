@@ -2,6 +2,7 @@
 
 import prisma, { UserRecord } from '@/lib/prisma';
 import { User, Role, UserRole, HospitalProfile, DoctorProfile, PatientProfile } from '@/types';
+import { hashPassword, verifyPassword } from '@/lib/auth';
 
 export interface LoginResult {
   success: boolean;
@@ -46,8 +47,9 @@ export async function authenticateUserAction(
       };
     }
 
-    // Check password if set on record
-    if (existingUser.password && existingUser.password !== password) {
+    // Verify password securely using bcrypt with fallback for demo accounts
+    const isPasswordValid = await verifyPassword(password, existingUser.password);
+    if (!isPasswordValid) {
       return {
         success: false,
         error: 'Invalid password. Please check your password and try again.',
@@ -114,12 +116,17 @@ export async function registerUserRecordAction(data: {
   doctorProfile?: DoctorProfile;
   patientProfile?: PatientProfile;
 }): Promise<User> {
+  const rawPassword = data.password?.trim() || 'password123';
+  // Check if rawPassword is already a bcrypt hash
+  const isAlreadyHashed = /^\$2[abyx]?\$\d+\$/.test(rawPassword);
+  const hashedPassword = isAlreadyHashed ? rawPassword : await hashPassword(rawPassword);
+
   const created = await prisma.user.create({
     data: {
       id: data.id || `usr-${Date.now()}`,
       email: data.email.trim().toLowerCase(),
       fullName: data.fullName.trim(),
-      password: data.password || 'password123',
+      password: hashedPassword,
       role: data.role,
       phone: data.phone?.trim(),
       hospitalId: data.hospitalId,
