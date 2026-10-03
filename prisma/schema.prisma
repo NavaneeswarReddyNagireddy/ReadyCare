@@ -117,6 +117,8 @@ model HospitalProfile {
   phoneNumber         String
   location            String        // Hospital Location (City/Address)
   specialty           String        // Primary Specialization (General Hospital, 24/7 Emergency, Cardiology, Orthopedics, Pediatrics)
+  latitude            Float?        // Geo Coordinate Latitude
+  longitude           Float?        // Geo Coordinate Longitude
   
   createdAt           DateTime      @default(now())
   updatedAt           DateTime      @updatedAt

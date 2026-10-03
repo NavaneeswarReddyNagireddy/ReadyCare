@@ -5,6 +5,33 @@ export interface UserRecord extends User {
   updatedAt?: string;
 }
 
+/**
+ * Geocodes an address or city text string into realistic map coordinates.
+ */
+export function geocodeAddress(address: string): { latitude: number; longitude: number } {
+  const addr = address.toLowerCase();
+  if (addr.includes('east') || addr.includes('oakridge')) return { latitude: 37.7680, longitude: -122.4080 };
+  if (addr.includes('biotech') || addr.includes('innovation') || addr.includes('apex')) return { latitude: 37.7850, longitude: -122.4020 };
+  if (addr.includes('bay') || addr.includes('harbor') || addr.includes('water')) return { latitude: 37.7950, longitude: -122.3950 };
+  if (addr.includes('north') || addr.includes('trauma') || addr.includes('heights')) return { latitude: 37.7600, longitude: -122.4350 };
+  if (addr.includes('west') || addr.includes('sunset')) return { latitude: 37.7710, longitude: -122.4450 };
+  if (addr.includes('south') || addr.includes('mission')) return { latitude: 37.7520, longitude: -122.4150 };
+  if (addr.includes('downtown') || addr.includes('metro') || addr.includes('central')) return { latitude: 37.7749, longitude: -122.4194 };
+  
+  // Deterministic pseudo-random offset around center [37.7749, -122.4194]
+  let hash = 0;
+  for (let i = 0; i < address.length; i++) {
+    hash = (hash << 5) - hash + address.charCodeAt(i);
+    hash |= 0;
+  }
+  const latOffset = ((Math.abs(hash) % 100) - 50) * 0.0006;
+  const lngOffset = ((Math.abs(hash >> 3) % 100) - 50) * 0.0006;
+  return {
+    latitude: Number((37.7749 + latOffset).toFixed(5)),
+    longitude: Number((-122.4194 + lngOffset).toFixed(5)),
+  };
+}
+
 // In-memory persistent user accounts
 let memoryUsers: UserRecord[] = [
   {
@@ -79,6 +106,8 @@ let memoryUsers: UserRecord[] = [
       phoneNumber: '+1 (555) 911-0001',
       location: 'Downtown Medical District, Metro City',
       specialty: 'Cardiology',
+      latitude: 37.7749,
+      longitude: -122.4194,
       createdAt: '2026-09-01T10:00:00Z',
     },
     createdAt: '2026-09-01T10:00:00Z',
@@ -97,6 +126,8 @@ let memoryHospitalProfiles: HospitalProfile[] = [
     phoneNumber: '+1 (555) 911-0001',
     location: 'Downtown Medical District, Metro City',
     specialty: 'Cardiology',
+    latitude: 37.7749,
+    longitude: -122.4194,
     createdAt: '2026-09-01T10:00:00Z',
     updatedAt: '2026-09-01T10:00:00Z',
   },
@@ -109,6 +140,8 @@ let memoryHospitalProfiles: HospitalProfile[] = [
     phoneNumber: '+1 (555) 345-6789',
     location: '142 Oakridge Blvd, Eastside',
     specialty: 'General Hospital',
+    latitude: 37.7680,
+    longitude: -122.4080,
     createdAt: '2026-09-05T10:00:00Z',
     updatedAt: '2026-09-05T10:00:00Z',
   },
@@ -121,6 +154,8 @@ let memoryHospitalProfiles: HospitalProfile[] = [
     phoneNumber: '+1 (555) 456-7890',
     location: '88 Innovation Way, Biotech Park',
     specialty: 'Orthopedics',
+    latitude: 37.7850,
+    longitude: -122.4020,
     createdAt: '2026-09-10T10:00:00Z',
     updatedAt: '2026-09-10T10:00:00Z',
   },
@@ -133,6 +168,8 @@ let memoryHospitalProfiles: HospitalProfile[] = [
     phoneNumber: '+1 (555) 567-8901',
     location: '512 Harbor View Road, Bay District',
     specialty: 'Pediatrics',
+    latitude: 37.7950,
+    longitude: -122.3950,
     createdAt: '2026-09-12T10:00:00Z',
     updatedAt: '2026-09-12T10:00:00Z',
   },
@@ -145,6 +182,8 @@ let memoryHospitalProfiles: HospitalProfile[] = [
     phoneNumber: '+1 (555) 789-0123',
     location: '100 Emergency Way, North Heights',
     specialty: '24/7 Emergency',
+    latitude: 37.7600,
+    longitude: -122.4350,
     createdAt: '2026-09-15T10:00:00Z',
     updatedAt: '2026-09-15T10:00:00Z',
   },
@@ -157,6 +196,8 @@ export interface HospitalProfileCreateInput {
   phoneNumber: string;
   location: string;
   specialty: string;
+  latitude?: number;
+  longitude?: number;
   user?: any;
 }
 
@@ -179,7 +220,6 @@ export const prisma = {
       const lower = data.email.toLowerCase().trim();
       const existing = memoryUsers.find((u) => u.email.toLowerCase() === lower);
       if (existing) {
-        // Update existing
         Object.assign(existing, data);
         existing.updatedAt = new Date().toISOString();
         return existing;
@@ -217,6 +257,10 @@ export const prisma = {
       return sorted;
     },
     create: async ({ data }: { data: HospitalProfileCreateInput }): Promise<HospitalProfile> => {
+      const coords = (data.latitude && data.longitude) 
+        ? { latitude: data.latitude, longitude: data.longitude }
+        : geocodeAddress(data.location);
+
       const newRec: HospitalProfile = {
         id: `hosp-prof-${Date.now()}`,
         userId: `usr-hosp-${Date.now()}`,
@@ -226,6 +270,8 @@ export const prisma = {
         phoneNumber: data.phoneNumber,
         location: data.location,
         specialty: data.specialty,
+        latitude: coords.latitude,
+        longitude: coords.longitude,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };

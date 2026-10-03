@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import { 
   Search, 
   MapPin, 
@@ -24,13 +25,30 @@ import {
   RefreshCw,
   Mail,
   Phone,
-  Filter
+  Filter,
+  Navigation,
+  Map as MapIcon,
+  Layers,
+  ChevronRight
 } from 'lucide-react';
 import { useHealthcare } from '@/context/HealthcareContext';
 import { useAuth } from '@/context/AuthContext';
 import { HospitalProfile, Facility } from '@/types';
 import { getRegisteredHospitalProfiles } from '@/app/actions/hospital';
 import EmergencyBanner from '@/components/EmergencyBanner';
+
+// Dynamically import Leaflet Map to avoid SSR window errors
+const HospitalMap = dynamic(() => import('@/components/HospitalMap'), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-80 sm:h-96 rounded-3xl bg-slate-100 border border-slate-200 animate-pulse flex flex-col items-center justify-center gap-3">
+      <div className="w-10 h-10 rounded-2xl bg-slate-200 flex items-center justify-center text-teal-600">
+        <MapIcon className="w-5 h-5 animate-spin" />
+      </div>
+      <p className="text-xs font-bold text-slate-500">Loading interactive real-time map...</p>
+    </div>
+  ),
+});
 
 const SPECIALTY_OPTIONS = [
   'ALL',
@@ -40,6 +58,21 @@ const SPECIALTY_OPTIONS = [
   'Orthopedics',
   'Pediatrics',
 ];
+
+// Helper to calculate distance in km
+function calculateDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371; // Earth radius in km
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return Number((R * c).toFixed(1));
+}
 
 export default function PatientDashboardPage() {
   const { 
@@ -58,6 +91,37 @@ export default function PatientDashboardPage() {
   const [fetchError, setFetchError] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedSpecialty, setSelectedSpecialty] = useState<string>('ALL');
+
+  // Interactive Map & Geolocation State
+  const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
+  const [isLocatingUser, setIsLocatingUser] = useState<boolean>(false);
+  const [selectedHospitalId, setSelectedHospitalId] = useState<string | null>(null);
+  const [isMapVisible, setIsMapVisible] = useState<boolean>(true);
+
+  // Request browser geolocation on mount
+  const requestUserLocation = () => {
+    if (typeof window !== 'undefined' && 'geolocation' in navigator) {
+      setIsLocatingUser(true);
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setUserLocation([pos.coords.latitude, pos.coords.longitude]);
+          setIsLocatingUser(false);
+        },
+        (err) => {
+          console.warn('Geolocation permission not granted or timeout, setting default city coordinates:', err);
+          setUserLocation([37.7749, -122.4194]);
+          setIsLocatingUser(false);
+        },
+        { timeout: 7000, enableHighAccuracy: true }
+      );
+    } else {
+      setUserLocation([37.7749, -122.4194]);
+    }
+  };
+
+  useEffect(() => {
+    requestUserLocation();
+  }, []);
 
   // Fetch live registered hospital records from DB / Server Action
   const loadHospitals = async () => {
@@ -113,7 +177,7 @@ export default function PatientDashboardPage() {
   // Filtered dynamically fetched hospitals
   const filteredHospitals = useMemo(() => {
     return hospitals.filter((hosp) => {
-      // Search query filter (matches hospital name or location)
+      // Search query filter (matches hospital name, location, owner, or specialty)
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         const matchesName = hosp.hospitalName.toLowerCase().includes(q);
@@ -183,6 +247,15 @@ export default function PatientDashboardPage() {
     };
   };
 
+  // Map to List Selection connection: highlights and scrolls to card
+  const handleSelectHospitalFromMap = (hospitalId: string) => {
+    setSelectedHospitalId(hospitalId);
+    const element = document.getElementById(`hospital-card-${hospitalId}`);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  };
+
   const getSpecialtyBadgeInfo = (specialty: string) => {
     switch (specialty) {
       case 'Cardiology':
@@ -229,13 +302,13 @@ export default function PatientDashboardPage() {
               <User className="w-3.5 h-3.5" />
               Patient Portal
             </span>
-            <span className="text-xs text-slate-400">Live Hospital Discovery</span>
+            <span className="text-xs text-slate-400">Live Hospital Discovery & Map</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mt-1">
             Welcome, {user?.fullName || 'Alex Henderson'}
           </h1>
           <p className="text-xs sm:text-sm text-slate-500">
-            Browse registered hospitals in real-time, inspect specialties, and secure your place in queue.
+            Browse registered hospitals in real-time, inspect specialties on the interactive map, and secure walk-in passes.
           </p>
         </div>
 
@@ -315,7 +388,7 @@ export default function PatientDashboardPage() {
             <div className="space-y-1 text-center md:text-left">
               <span className="text-[10px] font-extrabold uppercase tracking-wider text-teal-400">ReadyCare Instant Triage</span>
               <h3 className="text-lg sm:text-xl font-bold">You don't have an active queue token yet</h3>
-              <p className="text-xs text-slate-400">Select any live registered hospital below to secure a walk-in pass or schedule an appointment.</p>
+              <p className="text-xs text-slate-400">Select any hospital on the map or list below to secure a walk-in pass or schedule an appointment.</p>
             </div>
             <button
               onClick={() => openBookingModal({ mode: 'TOKEN' })}
@@ -330,7 +403,51 @@ export default function PatientDashboardPage() {
       {/* EMERGENCY TRIAGE BANNER */}
       <EmergencyBanner />
 
-      {/* DYNAMIC HOSPITAL DISCOVERY SECTION (Real-Time Database Query) */}
+      {/* INTERACTIVE REAL-TIME MAP SECTION */}
+      <section className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-xl bg-teal-100 text-teal-800 flex items-center justify-center font-bold">
+              <MapIcon className="w-4 h-4" />
+            </div>
+            <div>
+              <h2 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">
+                Live Interactive Hospital Map
+              </h2>
+              <p className="text-xs text-slate-500">
+                Click any hospital marker to view specialty details, live distance, and fast walk-in booking.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsMapVisible(!isMapVisible)}
+              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
+            >
+              <Layers className="w-3.5 h-3.5 text-slate-500" />
+              <span>{isMapVisible ? 'Hide Map' : 'Show Map'}</span>
+            </button>
+          </div>
+        </div>
+
+        {isMapVisible && (
+          <HospitalMap
+            hospitals={filteredHospitals}
+            userLocation={userLocation}
+            selectedHospitalId={selectedHospitalId}
+            onSelectHospital={handleSelectHospitalFromMap}
+            onOpenBookingModal={(hosp) => {
+              const fac = getFacilityFromHospital(hosp);
+              openBookingModal({ facility: fac, mode: 'TOKEN' });
+            }}
+            onRequestUserLocation={requestUserLocation}
+            isLocatingUser={isLocatingUser}
+          />
+        )}
+      </section>
+
+      {/* DYNAMIC HOSPITAL DIRECTORY SECTION (Real-Time Database Query) */}
       <section className="space-y-6">
         
         {/* Section Header with live badge & refresh */}
@@ -346,7 +463,7 @@ export default function PatientDashboardPage() {
               </span>
             </div>
             <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight mt-1">
-              Registered Hospitals & Specializations
+              Hospital Directory & Walk-in Access
             </h2>
             <p className="text-xs sm:text-sm text-slate-500">
               Live directory of accredited hospitals fetched dynamically from the database.
@@ -478,11 +595,23 @@ export default function PatientDashboardPage() {
               const badgeInfo = getSpecialtyBadgeInfo(hosp.specialty);
               const BadgeIcon = badgeInfo.icon;
               const facilityObj = getFacilityFromHospital(hosp);
+              const isSelected = selectedHospitalId === hosp.id;
+
+              // Compute distance from user if available
+              const distKm = userLocation && hosp.latitude && hosp.longitude 
+                ? calculateDistanceKm(userLocation[0], userLocation[1], hosp.latitude, hosp.longitude)
+                : null;
 
               return (
                 <div 
+                  id={`hospital-card-${hosp.id}`}
                   key={hosp.id}
-                  className="bg-white rounded-3xl border border-slate-200/90 hover:border-teal-300 shadow-xs hover:shadow-xl transition-all duration-300 overflow-hidden flex flex-col justify-between group"
+                  onClick={() => setSelectedHospitalId(hosp.id)}
+                  className={`bg-white rounded-3xl border transition-all duration-300 overflow-hidden flex flex-col justify-between group cursor-pointer ${
+                    isSelected 
+                      ? 'border-teal-500 ring-2 ring-teal-400/50 shadow-xl bg-teal-50/20' 
+                      : 'border-slate-200/90 hover:border-teal-300 shadow-xs hover:shadow-lg'
+                  }`}
                 >
                   
                   {/* Card Header */}
@@ -496,16 +625,29 @@ export default function PatientDashboardPage() {
                         <span>{hosp.specialty}</span>
                       </span>
 
-                      <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-md flex items-center gap-1">
-                        <CheckCircle2 className="w-3 h-3 text-emerald-500" />
-                        Verified
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        {distKm !== null && (
+                          <span className="text-[11px] font-bold text-teal-800 bg-teal-50 border border-teal-200 px-2.5 py-0.5 rounded-md flex items-center gap-1">
+                            <Navigation className="w-3 h-3 text-teal-600" />
+                            {distKm} km
+                          </span>
+                        )}
+                        <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-md flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                          Verified
+                        </span>
+                      </div>
                     </div>
 
                     {/* Hospital Name */}
                     <div>
-                      <h3 className="text-lg font-black text-slate-900 group-hover:text-teal-700 transition-colors line-clamp-1">
-                        {hosp.hospitalName}
+                      <h3 className="text-lg font-black text-slate-900 group-hover:text-teal-700 transition-colors line-clamp-1 flex items-center justify-between">
+                        <span>{hosp.hospitalName}</span>
+                        {isSelected && (
+                          <span className="text-[10px] font-black uppercase text-teal-600 bg-teal-100 px-2 py-0.5 rounded-md">
+                            Selected
+                          </span>
+                        )}
                       </h3>
                       
                       {/* Location (City / Address) */}
@@ -549,7 +691,10 @@ export default function PatientDashboardPage() {
                   {/* Card Action Buttons Footer */}
                   <div className="p-5 pt-0 mt-auto border-t border-slate-100 flex items-center gap-2">
                     <button
-                      onClick={() => openHospitalQueueModal(facilityObj)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openHospitalQueueModal(facilityObj);
+                      }}
                       className="flex-1 py-2.5 px-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-all cursor-pointer"
                     >
                       <Activity className="w-3.5 h-3.5 text-amber-400" />
@@ -557,7 +702,10 @@ export default function PatientDashboardPage() {
                     </button>
 
                     <button
-                      onClick={() => openBookingModal({ facility: facilityObj, mode: 'TOKEN' })}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openBookingModal({ facility: facilityObj, mode: 'TOKEN' });
+                      }}
                       className="flex-1 py-2.5 px-3 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-all cursor-pointer"
                     >
                       <Ticket className="w-3.5 h-3.5 text-amber-300" />

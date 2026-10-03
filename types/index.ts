@@ -21,6 +21,8 @@ export interface HospitalProfile {
   phoneNumber: string;
   location: string;    // Hospital Location (City/Address)
   specialty: string;   // Primary Specialization (General Hospital, 24/7 Emergency, Cardiology, Orthopedics, Pediatrics)
+  latitude?: number;   // Geo Coordinate Latitude
+  longitude?: number;  // Geo Coordinate Longitude
   createdAt?: string;
   updatedAt?: string;
 }
